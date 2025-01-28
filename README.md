@@ -54,3 +54,12 @@ The repository is organized into the following folders:
 
 7. **Submit the Pull Request (PR) URL in Canvas**
     Go to the corresponing to each lab code assigment in Canvas and submit the PR URL.
+
+# Collaborators
+Professor: Pablo Camarillo
+
+## Students
+
+
+
+
