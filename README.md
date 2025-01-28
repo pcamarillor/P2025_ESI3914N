@@ -62,9 +62,9 @@ The repository is organized into the following folders:
 Professor: Pablo Camarillo
 
 ## Students
-
  Juan Pablo
  Luther
  Ferdinand
  Konrad
  Miguel
+ Eddie Aguilar
