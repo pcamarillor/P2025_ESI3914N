@@ -1,0 +1,4 @@
+# Notebook's checkpoints
+spark_cluster/notebooks/examples/.ipynb_checkpoints
+spark_cluster/notebooks/examples/lib/.ipynb_checkpoints/
+*.pyc
