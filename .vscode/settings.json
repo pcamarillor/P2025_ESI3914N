@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "./spark_cluster/notebooks/lib"
+    ]
+}

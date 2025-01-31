@@ -1,5 +1,28 @@
 import math
 
+class Book:
+  def __init__(self, title, author):
+      self.title = title
+      self.author = author
+
+  def __str__(self):
+      return f"{self.title} by {self.author}"
+
+  def __repr__(self):
+      return f"Book('{self.title}', '{self.author}')"
+  
+class MathUtils:
+  @staticmethod
+  def add(x, y):
+      return x + y
+
+class Dog:
+  species = "Canis familiaris"
+
+  @classmethod
+  def get_species(cls):
+      return cls.species
+
 # Base class
 class Figure:
     def __init__(self, name):
@@ -20,13 +43,27 @@ class Figure:
 class Circle(Figure):
     def __init__(self, radius):
         super().__init__("Circle")
-        self.radius = radius
+        self._radius = radius
     
+    @property
+    def radius(self):
+        return self._radius
+    
+    @radius.setter
+    def radius(self, value):
+        if value < 0:
+            raise ValueError("Radius cannot be negative")
+        self._radius = value
+
+    def __repr__(self):
+        return f"Circle(Radius:'{self._radius}')"
+    
+
     def area(self):
-        return math.pi * self.radius ** 2
+        return math.pi * self._radius ** 2
     
     def perimeter(self):
-        return 2 * math.pi * self.radius
+        return 2 * math.pi * self._radius
 
 # Inherited class for Triangle
 class Triangle(Figure):
@@ -56,4 +93,11 @@ class Rectangle(Figure):
     
     def perimeter(self):
         return 2 * (self.width + self.height)
-  
+    
+class Person:
+  def __init__(self, name, age):
+      self.name = name
+      self.age = age
+
+  def introduce(self):
+      print(f"Hi, I'm {self.name} and I'm {self.age} years old.")
