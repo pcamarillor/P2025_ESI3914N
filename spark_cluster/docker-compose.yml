@@ -27,6 +27,8 @@ services:
     image: jupyter-notebook:latest
     depends_on:
       - spark-worker
+    environment:
+      - PYTHONPATH=/home/jovyan/notebooks/lib
     ports:
       - "8888:8888"
       - "4040:4040"
