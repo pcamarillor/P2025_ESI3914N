@@ -1,6 +1,11 @@
 class Calculator:
-    #def __init__(self):
-
+    def __init__(self):
+        self.operations = {
+            "add": self.add,
+            "subtract": self.subtract,
+            "multiply": self.multiply,
+            "divide": self.divide
+        }
 
     def add(self, a, b):
         return a + b
@@ -16,10 +21,8 @@ class Calculator:
             return a / b
         else:
             raise ValueError("Cannot divide by zero")
-    
-    execute_operation = {
-        "add": add,
-        "subtract": subtract,
-        "multiply": multiply,
-        "divide": divide
-    }
+        
+    def execute_operation(self, operation, a, b):
+        if operation in self.operations:
+            return self.operations[operation](a, b)
+        raise ValueError("Operation not supported")
