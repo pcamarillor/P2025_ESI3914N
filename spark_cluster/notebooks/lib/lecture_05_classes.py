@@ -10,7 +10,7 @@ class Book:
 
   def __repr__(self):
       return f"Book('{self.title}', '{self.author}')"
-  
+
 class MathUtils:
   @staticmethod
   def add(x, y):
@@ -27,13 +27,13 @@ class Dog:
 class Figure:
     def __init__(self, name):
         self.name = name
-    
+
     def area(self):
         raise NotImplementedError("Subclasses must implement this method")
-    
+
     def perimeter(self):
         raise NotImplementedError("Subclasses must implement this method")
-    
+
     def display(self):
         print(f"Figure: {self.name}")
         print(f"Area: {self.area()}")
@@ -44,11 +44,11 @@ class Circle(Figure):
     def __init__(self, radius):
         super().__init__("Circle")
         self._radius = radius
-    
+
     @property
     def radius(self):
         return self._radius
-    
+
     @radius.setter
     def radius(self, value):
         if value < 0:
@@ -57,11 +57,11 @@ class Circle(Figure):
 
     def __repr__(self):
         return f"Circle(Radius:'{self._radius}')"
-    
+
 
     def area(self):
         return math.pi * self._radius ** 2
-    
+
     def perimeter(self):
         return 2 * math.pi * self._radius
 
@@ -72,12 +72,12 @@ class Triangle(Figure):
         self.side_a = side_a
         self.side_b = side_b
         self.side_c = side_c
-    
+
     def area(self):
         # Using Heron's formula to calculate the area
         s = (self.side_a + self.side_b + self.side_c) / 2
         return math.sqrt(s * (s - self.side_a) * (s - self.side_b) * (s - self.side_c))
-    
+
     def perimeter(self):
         return self.side_a + self.side_b + self.side_c
 
@@ -87,13 +87,13 @@ class Rectangle(Figure):
         super().__init__("Rectangle")
         self.width = width
         self.height = height
-    
+
     def area(self):
         return self.width * self.height
-    
+
     def perimeter(self):
         return 2 * (self.width + self.height)
-    
+
 class Person:
   def __init__(self, name, age):
       self.name = name
