@@ -4,7 +4,7 @@ class SparkUtils:
     @staticmethod
     def generate_schema(columns_info) -> StructType:
     
-        TypeDict = {
+        type_dict = {
                 "string": StringType(),
                 "double": DoubleType(),
                 "int": IntegerType(),
@@ -20,7 +20,7 @@ class SparkUtils:
             }
         
 
-        schema_list = [ StructField(  tuple_arg[0], TypeDict[tuple_arg[1]], True  ) for tuple_arg in columns_info ]
+        schema_list = [ StructField(  tuple_arg[0], type_dict[tuple_arg[1]], True  ) for tuple_arg in columns_info ]
     
     
         return StructType(schema_list)
