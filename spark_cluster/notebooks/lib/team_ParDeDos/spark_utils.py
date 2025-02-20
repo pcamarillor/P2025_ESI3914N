@@ -1,8 +1,12 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, ShortType, DoubleType, FloatType, BooleanType, DateType, TimestampType, BinaryType, ArrayType, MapType
 
 class SparkUtils:
-    def __init__(self):
-        self.typeDict = {
+    # [("name", "StringType"),
+    #  ("age", "IntegerType"),
+    #  ("city", "StringType")]
+    @staticmethod
+    def generate_schema(columns_info) -> StructType:
+        typeDict = {
             "StringType": StringType(),
             "IntegerType": IntegerType(),
             "LongType": LongType(),
@@ -17,16 +21,11 @@ class SparkUtils:
             "DateType": DateType(),
         }
 
-    # [("name", "StringType"),
-    #  ("age", "IntegerType"),
-    #  ("city", "StringType")]
-
-    @staticmethod
-    def generate_schema(self, columns_info) -> StructType:
         # list of tuples
-        schema = []
+        struct = []
         for k, v in columns_info:
-            if v in self.typeDict:
+            if v in typeDict:
             # StructField("name", StringType(), True),
-                schema.append(StructField(f"${k}", type.get(v), True))
-        return schema
+                struct.append(StructField(f"${k}", typeDict.get(v), True))
+
+        return StructType(struct)
