@@ -29,6 +29,6 @@ class SparkUtils:
         schema = []
         for k, v in columns_info:
             if v not in typeDict:
-                raise TypeError(f"${v} is not a valid type.")
-            schema.append(StructField(f"${k}", typeDict.get(v), True))
+                raise TypeError(f"{v} is not a valid type.")
+            schema.append(StructField(f"{k}", typeDict.get(v), True))
         return StructType(schema)
