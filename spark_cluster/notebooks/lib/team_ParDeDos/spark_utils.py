@@ -1,4 +1,5 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, ShortType, DoubleType, FloatType, BooleanType, DateType, TimestampType, BinaryType, ArrayType, MapType
+from datetime import date, datetime
 
 class SparkUtils:
 
@@ -26,24 +27,30 @@ class SparkUtils:
         ("date_added", "date")
         """
         defaults = {
-            "string": "hola",
-            "integer": 15,
-            "long": 100,
-            "short": 12,
-            "double": 123.1,
-            "float": 123.123,
+            "string": "Unkown",
+            "integer": 0,
+            "long": 0,
+            "short": 0,
+            "double": 0.0,
+            "float": 0.0,
             "boolean": True,
-            "date": "lol",
-            "timestamp": "lol",
-            "binary": "lol"
+            "date": date.today(),
+            "timestamp": datetime.now(),
+            "binary": b""
         }
+        # Extraer nombre y tipo del esquema
+        column_defaults = {field.name: defaults.get(field.dataType.typeName(), None) for field in schema.fields}
 
+        # Reemplazar valores nulos en todas las columnas
+        temp_df = df.fillna(column_defaults)
 
-        for k, v in schema:
+        return temp_df
+
+        """for k, v in schema:
             if v not in defaults:
                 raise TypeError(f"{v} is not a valid type.")
             temp_df = df.fill(value=defaults.get(v),subset=[f"{k}"])
-        return temp_df
+        return temp_df"""
 
     @staticmethod
     def write_df(df):
