@@ -41,6 +41,7 @@ class SparkUtils:
     
         return StructType(schema_list)
     
+    
     def write_df(dataframe: DataFrame, path: str, *criteria: str) -> None:
         '''
         Method to write a PySpark DataFrame to a Parquet file, partitioned by specified criteria.
@@ -60,7 +61,6 @@ class SparkUtils:
         # Replaces existing files
         # Partitions the data based on the specified criteria. 
         # Defines the file path.
-        
         dataframe.write \
                 .mode("overwrite") \
                 .partitionBy(*criteria) \
