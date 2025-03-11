@@ -42,26 +42,36 @@ class SparkUtils:
         return StructType(schema_list)
     
     
-    def write_df(dataframe: DataFrame, path: str, *criteria: str) -> None:
+    from pyspark.sql import DataFrame
+
+    def write_df(config: dict) -> None:
         '''
         Method to write a PySpark DataFrame to a Parquet file, partitioned by specified criteria.
         
         Possible partitioning criteria: Any column(s) present in the DataFrame.
 
         Args:
-            dataframe (DataFrame):    The PySpark DataFrame to write.
-            path (str):               The file path where the Parquet file will be saved.
-            *criteria (str):          One or more column names to partition the data by.
+            config (dict): A dictionary containing the following keys:
+                - dataframe (DataFrame): The PySpark DataFrame to write.
+                - path (str): The file path where the Parquet file will be saved.
+                - mode (str): The write mode ('overwrite', 'append', 'ignore', 'error').
+                - criteria (list): A list of column names to partition the data by.
         
         Returns:
             None
         '''
-
+        
+        dataframe: DataFrame = config.get("dataframe")
+        path: str = config.get("path")
+        mode: str = config.get("mode", "overwrite")
+        criteria: list = config.get("criteria", [])
+        
         # Starts the write method
         # Replaces existing files
         # Partitions the data based on the specified criteria. 
         # Defines the file path.
         dataframe.write \
-                .mode("overwrite") \
-                .partitionBy(*criteria) \
-                .parquet(path)
+            .mode(mode) \
+            .partitionBy(criteria) \
+            .parquet(path)
+
