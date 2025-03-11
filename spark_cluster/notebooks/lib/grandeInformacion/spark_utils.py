@@ -19,21 +19,66 @@ types_schema = {
         }
 
 class SparkUtils:
+    # @staticmethod
+    # def generate_schema(columns_info) -> StructType:
+    #     counter = 0
+    #     str_shido = ''
+    #     for i in columns_info:
+    #         if counter == (len(columns_info) - 1):
+    #             str_shido = str_shido + f"StructField{i[0],{},True}".format(types_schema[i[1]])
+    #         else:
+    #             str_shido = str_shido + f"StructField{i[0],{},True}, ".format(types_schema[i[1]])
+    #         counter = counter + 1
+                
+    #     struct_type = "StructType([{}])".format(str_shido)
+    #     result = eval(struct_type)
+        
+    #     print(type(result))
+    #     return result
+
+    #     #raise NotImplementedError("Not implemented yet")
+
     @staticmethod
     def generate_schema(columns_info) -> StructType:
-        counter = 0
-        str_shido = ''
-        for i in columns_info:
-            if counter == (len(columns_info) - 1):
-                str_shido = str_shido + f"StructField{i[0],{},True}".format(types_schema[i[1]])
-            else:
-                str_shido = str_shido + f"StructField{i[0],{},True}, ".format(types_schema[i[1]])
-            counter = counter + 1
-                
-        struct_type = "StructType([{}])".format(str_shido)
-        result = eval(struct_type)
-        
-        print(type(result))
-        return result
+        """
+        Generates a list of StructField objects from a list of tuples.
 
-        #raise NotImplementedError("Not implemented yet")
+        Args:
+            column_info (list of tuples): Each tuple contains (column_name, data_type_string).
+
+        Returns:
+            list: A list of StructField objects.
+        """
+        # Mapping from string type names to PySpark data types
+        type_mapping = {
+            "string": StringType(),
+            "integer": IntegerType(),
+            "long": LongType(),
+            "short": ShortType(),
+            "double": DoubleType(),
+            "float": FloatType(),
+            "boolean": BooleanType(),
+            "date": DateType(),
+            "timestamp": TimestampType(),
+            "binary": BinaryType(),
+        }
+
+        struct_fields = []
+        for column_info in columns_info:
+            if column_info[1] not in type_mapping:
+                raise ValueError(f"Unsupported data type: {column_info[1]}")
+
+            # Create a StructField for the column
+            struct_field = StructField(column_info[0], type_mapping[column_info[1]], True)
+            struct_fields.append(struct_field)
+
+        return StructType(struct_fields)
+
+    def clean_df(df):
+        return df.dropna()
+    
+    def write_df(df):
+        df.write \
+            .mode("overwrite") \
+            .partitionBy("release_year") \
+            .parquet("/home/jovyan/notebooks/data/netflix_output/")
