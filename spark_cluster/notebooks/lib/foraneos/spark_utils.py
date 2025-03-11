@@ -1,4 +1,5 @@
 from pyspark.sql.types import StructField, StructType, StringType, DoubleType, IntegerType, FloatType, BooleanType, ShortType,LongType, MapType, ArrayType, TimestampType ,DateType
+from pyspark.sql import DataFrame
 
 class SparkUtils:
     
@@ -39,3 +40,28 @@ class SparkUtils:
     
     
         return StructType(schema_list)
+    
+    def write_df(dataframe: DataFrame, path: str, *criteria: str) -> None:
+        '''
+        Method to write a PySpark DataFrame to a Parquet file, partitioned by specified criteria.
+        
+        Possible partitioning criteria: Any column(s) present in the DataFrame.
+
+        Args:
+            dataframe (DataFrame):    The PySpark DataFrame to write.
+            path (str):               The file path where the Parquet file will be saved.
+            *criteria (str):          One or more column names to partition the data by.
+        
+        Returns:
+            None
+        '''
+
+        # Starts the write method
+        # Replaces existing files
+        # Partitions the data based on the specified criteria. 
+        # Defines the file path.
+        
+        dataframe.write \
+                .mode("overwrite") \
+                .partitionBy(*criteria) \
+                .parquet(path)
