@@ -1,5 +1,6 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, ShortType, DoubleType, FloatType, BooleanType, DateType, TimestampType, BinaryType, ArrayType, MapType
 from datetime import date, datetime
+from pyspark.sql import DataFrame
 
 class SparkUtils:
 
@@ -46,23 +47,26 @@ class SparkUtils:
 
         return temp_df
 
-        """for k, v in schema:
-            if v not in defaults:
-                raise TypeError(f"{v} is not a valid type.")
-            temp_df = df.fill(value=defaults.get(v),subset=[f"{k}"])
-        return temp_df"""
-
     @staticmethod
-    def write_df(df):
-        """_summary_
-
-        Args:
-            df (_type_): _description_
-
-        Returns:
-            _type_: _description_
+    def write_df(conf):
         """
-        return 0
+        Args:
+            df (DataFrame): _description_
+            partition_col (string):
+        """
+
+        dataframe: DataFrame = conf.get("dataframe")
+        path: str = conf.get("path")
+        mode: str = conf.get("mode", "overwrite")
+        criteria: list = conf.get("criteria", [])
+
+        try:
+            dataframe.write \
+                .partitionBy(criteria) \
+                .mode(mode) \
+                .parquet(path)
+        except:
+            print("Error al escribir el DataFrame")
 
     @staticmethod
     def generate_schema(columns_info) -> StructType:
