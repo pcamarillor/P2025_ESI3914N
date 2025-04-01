@@ -1,5 +1,12 @@
 from pyspark.sql.types import StructField, StructType, StringType, DoubleType, IntegerType, FloatType, BooleanType, ShortType,LongType, MapType, ArrayType, TimestampType ,DateType
 from pyspark.sql import DataFrame
+import time
+from datetime import datetime
+import random
+import string
+import os
+
+
 
 class SparkUtils:
     
@@ -92,4 +99,153 @@ class SparkUtils:
             .mode(mode) \
             .partitionBy(criteria) \
             .parquet(path)
+            
+            
+            
+class Logging:
+    
+    def __init__(self, log_time = '2sec', fileentry_number_type = 'random'):
+        self.log_time = log_time
+        self.fileentry_number_type = string(fileentry_number_type)
+        self.error_types = ['WARNING', 'ERROR', 'INFO', 'DEBUG']
+        self.run_logs = False
+        self.log_messages = {
+        "WARN": [
+            "Disk usage 85%", "Memory usage high", "CPU temperature warning", "Network latency detected", "Disk space running low",
+            "Slow database response", "High number of connections", "Service restart needed", "Potential security risk detected", "System time drift detected",
+            "Configuration file modified", "Unexpected traffic spike", "Software update required", "Possible memory leak", "Process taking too long",
+            "Filesystem corruption detected", "Swap usage high", "Database connection unstable", "CPU usage 95%", "High error rate in logs",
+            "Unusual login activity", "VPN connection unstable", "Packet loss detected", "Background job running long", "SSL certificate expiring soon",
+            "High CPU load average", "Hardware temperature rising", "Excessive API calls detected", "Unusual outbound traffic", "Potential data inconsistency",
+            "New device detected on network", "Backup process slow", "Unexpected reboot detected", "Service response delayed", "Email queue backlog growing",
+            "Too many open files", "DNS resolution failures increasing", "Insufficient file handles available", "Low available entropy", "Message queue delay growing",
+            "High garbage collection time", "Unexpected spike in failed jobs", "Slow response from external service", "Cloud resource limits approaching",
+            "New SSH key detected", "Filesystem read-only mode", "Unusual cron job execution", "Increasing error rate in API", "Possible DoS attack detected"
+        ],
+        "ERROR": [
+            "500 Internal Server Error", "Application crashed", "Database connection failed", "Memory allocation failed", "File system full",
+            "Service not responding", "Disk I/O error", "Critical process terminated", "Kernel panic detected", "Network unreachable",
+            "Data corruption detected", "Unauthorized access attempt", "Service authentication failure", "Critical security vulnerability detected",
+            "Application timeout error", "Data inconsistency detected", "Severe performance degradation", "System out of disk space", "Disk read failure",
+            "Process out of memory", "Service startup failure", "System clock sync failure", "Hardware failure detected", "Unexpected service termination",
+            "Database corruption detected", "Cannot write to log file", "Backup process failed", "Configuration error detected", "API service failure",
+            "Cloud resource exhausted", "Container crash detected", "SSL handshake failure", "Unauthorized API request", "Broken pipe error",
+            "File permissions issue", "Kernel module load failure", "Network interface down", "Firewall rule misconfiguration", "Unexpected shutdown detected",
+            "Critical hardware component failure", "Log file write failure", "Too many authentication failures", "Service deployment failure",
+            "Unexpected data format in input", "Job queue failure", "Data loss detected", "Service loop detected", "Major dependency failure",
+            "Unrecoverable system error"
+        ],
+        "INFO": [
+            "User login successful", "Service started", "Scheduled job executed", "Configuration file updated", "New user registered",
+            "Backup completed successfully", "Cache cleared", "Database query executed", "File uploaded successfully", "Password changed successfully",
+            "System update completed", "API request processed", "New device connected", "System rebooted", "Log rotation completed",
+            "Session expired", "Cron job completed", "Network interface reset", "System boot completed", "New connection established",
+            "Certificate renewed successfully", "Service configuration reloaded", "Authentication token issued", "User session ended", "Scheduled maintenance started",
+            "Email sent successfully", "Data export completed", "Cloud instance started", "File download completed", "Scheduled report generated",
+            "System diagnostics completed", "Service cache refreshed", "Access granted", "Load balancer updated", "Deployment completed",
+            "Autoscaling event triggered", "Resource usage within limits", "Database optimization completed", "API key issued",
+            "User preferences updated", "Security scan completed", "Monitoring alert resolved", "System shutdown completed",
+            "Configuration backup created", "New firewall rule applied", "Filesystem check completed", "New admin user added",
+            "Audit log entry recorded", "Server software version updated", "System performance check completed", "User logged out"
+        ],
+        "DEBUG": [
+            "Executing query: SELECT * FROM users", "Cache miss for key: user:1234", "Request headers: {user-agent: Mozilla}", "Debugging session started",
+            "Function process_data() called with args: (10, 20)", "Received API request: GET /status", "Retrying database connection...", "Memory allocation: 1024MB",
+            "Executing background job ID: 42", "Processing batch 5 of 10", "Attempting to acquire lock on resource", "User input validation passed",
+            "Generated token: abc123", "Connecting to external API: example.com", "Request timeout set to 30s", "Thread pool size adjusted to 8",
+            "Reading configuration from /etc/config.yaml", "Temporary file created: /tmp/tmpfile1", "Performance benchmark started", "Heap size: 2048MB",
+            "Loading user preferences from database", "Releasing lock on resource", "Generating session ID: xyz789", "Debug mode enabled",
+            "Initializing new connection pool", "Response payload: true", "File read operation took 120ms", "Checking for software updates",
+            "CPU utilization: 45%", "Attempting connection retry #3", "Clearing temporary cache", "API response status: 200 OK",
+            "Setting environment variable: DEBUG=true", "Triggering log rotation", "Reading data chunk: 256KB", "Parsing JSON response",
+            "Verifying SSL certificate", "Starting new transaction", "Rolling back transaction due to error", "HTTP request latency: 85ms",
+            "Sending email notification", "Execution time: 5.3s", "Revalidating cache entry", "Checking for memory leaks", "Processing image upload",
+            "Spawning new worker thread", "Compiling configuration settings", "Exiting debug mode", "Switching to maintenance mode"
+        ]
+    }
+        
+    
+    
+    
+    
+    def __generate_log_entry(self):
+        category = random.choice(list(self.log_messages.keys()))
+        message = random.choice(self.log_messages[category])
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        server_node = "server-node-{}".format( random.randint(1,9))
+        return "{} | {} | {} | {}\n".format(timestamp, category, message, server_node)
+
+
+    def __generate_logfilename(self, length=20):
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+
+    def __write_log_to_file(self, file):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        random_number = random.randint(0, 2)
+        random_string = self.__generate_random_string()
+        file.write(self.__generate_log_entry())
+
+
+    def __is_convertible_to_int(variable):
+        try:
+            # Try to convert the variable to an integer
+            int(variable)
+            return True
+        except (ValueError, TypeError):
+            # If it raises a ValueError or TypeError, it's not convertible to int
+            return False
+        
+        
+    def __run_logging(self,log_file_path):
+        '''
+        write logging files, the user passes a path where the files will be written
+        '''
+        
+        # start endless logging loop
+        while self.run_logs:
+            
+            fileentry_number = 0
+            #create random log file name
+            filename = "logentry_"+self.__generate_logfilename()+".txt"
+            filepath = os.path.join(log_file_path, filename)
+            
+            with open(filepath, "a") as file:
+                
+                #when the user wants a random number of entries per log file
+                if self.fileentry_number_type == "random" or self.__is_convertible_to_int(self.fileentry_number_type):
+                    fileentry_number = random.randint(0, 15)
+                
+                #when the user passed an integer as number of entries per logfile
+                else:
+                    fileentry_number = int(self.fileentry_number_type)
+                    
+                #start writing to file
+                for entry in range(fileentry_number):
+                        self.__write_log_to_file(file)
+                        
+                        #if user passed unviable or no option for time between log entries --> use 2 seconds
+                        if self.log_time == '2sec' or self.log_time != "random":
+                            time.sleep(2)                                       # Wait for 2 seconds
+                        
+                        #otherwise use a random sleep time within 0.1sec to 5.5sec
+                        else:
+                            time.sleep(random.uniform(0.1, 5.5))                # wait for random amount of time for next log
+
+
+
+    def start_logging(self, log_file_path):
+        '''
+            start the logging loop
+        '''
+        self.run_logs = True
+        self.__run_logging(self, log_file_path)
+        
+        
+        
+    def stop_logging(self):
+        '''
+            stop the logging loop
+        '''
+        self.run_logs = False
 
