@@ -2,7 +2,8 @@ from pyspark.sql.types import StructType, StructField
 from pyspark.sql.types import (StructType, ShortType, StringType, 
                                IntegerType, FloatType, BooleanType, LongType, MapType,
                                DoubleType, DateType, TimestampType, BinaryType, ArrayType)
-
+from time import time, sleep
+from random import randint
 
 types_schema = {
             "StringType": StringType(),
@@ -74,11 +75,22 @@ class SparkUtils:
 
         return StructType(struct_fields)
 
+    @staticmethod
     def clean_df(df):
         return df.dropna()
     
+    @staticmethod
     def write_df(df):
         df.write \
             .mode("overwrite") \
             .partitionBy("release_year") \
             .parquet("/home/jovyan/notebooks/data/netflix_output/")
+    
+    @staticmethod
+    def logs(path):
+        logs = [' | WARN | Disk usage 85% | server-node-1', '  | ERROR | 500 Internal Server Error | server-node-2', ' | INFO | User login successful | server-node-1']
+        for i in range(0, 3):
+            f = open(f"{path}/log-{time()}", 'x')
+            f.write(str(time()) + logs[randint(0, 2)])
+            f.close()    
+            sleep(3)
