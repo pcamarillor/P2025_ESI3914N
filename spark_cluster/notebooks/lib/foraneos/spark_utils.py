@@ -102,11 +102,19 @@ class SparkUtils:
             
             
             
+            
+            
+            
+            
 class Logging:
     
     def __init__(self, log_time = '2sec', fileentry_number_type = 'random'):
         self.log_time = log_time
-        self.fileentry_number_type = string(fileentry_number_type)
+        if isinstance(fileentry_number_type, str):
+            self.fileentry_number_type = fileentry_number_type  # Store as is
+        else:
+            self.fileentry_number_type = str(fileentry_number_type)
+            
         self.error_types = ['WARNING', 'ERROR', 'INFO', 'DEBUG']
         self.run_logs = False
         self.log_messages = {
@@ -181,9 +189,6 @@ class Logging:
 
 
     def __write_log_to_file(self, file):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        random_number = random.randint(0, 2)
-        random_string = self.__generate_random_string()
         file.write(self.__generate_log_entry())
 
 
@@ -239,7 +244,7 @@ class Logging:
             start the logging loop
         '''
         self.run_logs = True
-        self.__run_logging(self, log_file_path)
+        self.__run_logging(log_file_path)
         
         
         
