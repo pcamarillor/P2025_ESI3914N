@@ -108,13 +108,35 @@ class SparkUtils:
             
 class Logging:
     
-    def __init__(self, log_time = '2sec', fileentry_number_type = 'random'):
-        self.log_time = log_time
-        if isinstance(fileentry_number_type, str):
-            self.fileentry_number_type = fileentry_number_type  # Store as is
-        else:
-            self.fileentry_number_type = str(fileentry_number_type)
+    def __init__(self, log_time = 2, fileentry_number_type = 99999):
+        '''
+        This class creates random log files from a server where the los message contains
+            date time | Message Type | Message | Server ID
+        The user can set the interval between two log messages or specify 'random'. Not set is 2 seconds.
+        And the user can specify how many log messages per log file should be written. Mot set is 'random'. 
+        
+        Args:
+            log_time (optional):                    int or 'random', interval between log messages, default is 2 seconds
+        Returns:
+            fileentry_number_type (int, optional):   number of log messages pero log file, default is random 
+        '''
+        
+        
+        if log_time != 'random' and not isinstance(log_time, int):
+            raise ValueError("log_time should be int or 'random'!")
+        elif log_time == 'random': 
+            self.log_time = 99999
+        else:    
+            self.log_time = log_time
             
+        if not isinstance(fileentry_number_type, int):
+            raise ValueError("fileentry_number_type should be an integer!")
+        elif fileentry_number_type != 99999:
+            self.fileentry_number_type = fileentry_number_type
+        else:
+            self.fileentry_number_type = 99999
+            
+        
         self.error_types = ['WARNING', 'ERROR', 'INFO', 'DEBUG']
         self.run_logs = False
         self.log_messages = {
@@ -177,6 +199,10 @@ class Logging:
     
     
     def __generate_log_entry(self):
+        '''
+        this function generates log messages consisting of 
+        date time | message type | message | server id
+        '''
         category = random.choice(list(self.log_messages.keys()))
         message = random.choice(self.log_messages[category])
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -185,26 +211,26 @@ class Logging:
 
 
     def __generate_logfilename(self, length=20):
+        '''
+        This function creates a random string of e set length. Default is 20 characters
+        Args:
+            length (int):             length of random file name string
+        '''
         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
     def __write_log_to_file(self, file):
+        '''
+        this function writes a single log message into a log file
+        '''
         file.write(self.__generate_log_entry())
-
-
-    def __is_convertible_to_int(variable):
-        try:
-            # Try to convert the variable to an integer
-            int(variable)
-            return True
-        except (ValueError, TypeError):
-            # If it raises a ValueError or TypeError, it's not convertible to int
-            return False
         
         
     def __run_logging(self,log_file_path):
         '''
         write logging files, the user passes a path where the files will be written
+        Args:
+            log_file_path (string):             absolut file path
         '''
         
         # start endless logging loop
@@ -218,24 +244,27 @@ class Logging:
             with open(filepath, "a") as file:
                 
                 #when the user wants a random number of entries per log file
-                if self.fileentry_number_type == "random" or self.__is_convertible_to_int(self.fileentry_number_type):
+                if self.fileentry_number_type == 99999:
                     fileentry_number = random.randint(0, 15)
                 
                 #when the user passed an integer as number of entries per logfile
                 else:
-                    fileentry_number = int(self.fileentry_number_type)
+                    fileentry_number = self.fileentry_number_type
                     
                 #start writing to file
                 for entry in range(fileentry_number):
                         self.__write_log_to_file(file)
                         
-                        #if user passed unviable or no option for time between log entries --> use 2 seconds
-                        if self.log_time == '2sec' or self.log_time != "random":
+                        #nothing
+                        if self.log_time == 2:
                             time.sleep(2)                                       # Wait for 2 seconds
-                        
                         #otherwise use a random sleep time within 0.1sec to 5.5sec
+                        elif self.log_time == 99999:
+                            time.sleep(random.uniform(0.1, 5.5))                
+                        # use userspecific time
                         else:
-                            time.sleep(random.uniform(0.1, 5.5))                # wait for random amount of time for next log
+                            time.sleep(self.log_time)
+                            
 
 
 
