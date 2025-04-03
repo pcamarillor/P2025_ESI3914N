@@ -1,8 +1,3 @@
-# This file should generate random entry logs to simulate a web server with this format:
-"""
-2025-05-20 10:00:00 | WARN | Disk usage 85% | server-node-1
-2025-05-20 10:00:00 | ERROR | Error 500 | server-node-2
-"""
 import random
 import datetime
 import os
@@ -10,44 +5,37 @@ import time
 
 
 class LogGenerator:
-
-    def __init__(
-        self,
-        server_nodes,
-        log_messages,
-        log_dir="/home/jovyan/notebooks/data/structured_streaming_files/",
-    ):
+    def __init__(self, server_nodes, log_messages, log_dir, logs_per_file=10):
         self.server_nodes = server_nodes
         self.log_messages = log_messages
         self.log_dir = log_dir
-        os.makedirs(
-            self.log_dir, exist_ok=True
-        )  # Creates the directory if it doesn't exist
+        self.logs_per_file = logs_per_file  # Número de logs por archivo
+        os.makedirs(self.log_dir, exist_ok=True)
 
     def generate_log(self) -> str:
-        """Randomly generate log messages."""
+        """Genera un mensaje de log aleatorio."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_level = random.choice(list(self.log_messages.keys()))
         message = random.choice(self.log_messages[log_level])
         node = random.choice(self.server_nodes)
-
-        log_entry = f"{timestamp} | {log_level} | {message} | {node}"
-        return log_entry
+        return f"{timestamp} | {log_level} | {message} | {node}"
 
     def write_log_to_file(self):
-        """Writes the logs in a specific directory with a specific name the the file."""
-        filename = filename = (
-            f"{self.log_dir}/log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        )
+        """Escribe 'logs_per_file' logs en un solo archivo."""
+        filename = f"{self.log_dir}/log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         with open(filename, "w") as f:
-            log_entry = self.generate_log()
-            f.write(f"{log_entry}\n")
+            for _ in range(self.logs_per_file):
+                f.write(self.generate_log() + "\n")
+        print(f"Generated {self.logs_per_file} logs in {filename}")  # Mensaje de depuración
 
-    def start_streaming(self, num_logs=100, interval=2):
-        """Generates a determined number of logs in a defined interval."""
-        for _ in range(num_logs):
-            self.write_log_to_file()
-            time.sleep(interval)  # Simulate the generations of the logs
+    def start_streaming(self, interval=2):
+        """Genera logs indefinidamente hasta que el usuario interrumpa el proceso."""
+        try:
+            while True:
+                self.write_log_to_file()
+                time.sleep(interval)  # Espera antes de generar el siguiente archivo
+        except KeyboardInterrupt:
+            print("\nLog generation stopped by user.")
 
 
 if __name__ == "__main__":
@@ -68,5 +56,5 @@ if __name__ == "__main__":
     }
     log_dir = "/home/jovyan/notebooks/data/structured_streaming_log_files/"
 
-    log_generator = LogGenerator(server_nodes, log_messages, log_dir)
-    log_generator.start_streaming(50)
+    log_generator = LogGenerator(server_nodes, log_messages, log_dir, logs_per_file=10)
+    log_generator.start_streaming(interval=5)
