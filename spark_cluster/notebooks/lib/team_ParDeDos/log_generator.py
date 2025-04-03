@@ -69,4 +69,4 @@ if __name__ == "__main__":
     log_dir = "/home/jovyan/notebooks/data/structured_streaming_log_files/"
 
     log_generator = LogGenerator(server_nodes, log_messages, log_dir)
-    log_generator.start_streaming(100)
+    log_generator.start_streaming(50)
