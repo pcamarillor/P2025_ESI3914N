@@ -89,8 +89,10 @@ class SparkUtils:
     @staticmethod
     def logs(path):
         logs = [' | WARN | Disk usage 85% | server-node-1', '  | ERROR | 500 Internal Server Error | server-node-2', ' | INFO | User login successful | server-node-1']
-        for i in range(0, 3):
-            f = open(f"{path}/log-{time()}", 'x')
-            f.write(str(time()) + logs[randint(0, 2)])
+        while(True):
+            f = open(f"{path}/log-{time()}.txt", 'x')
+            for _ in range(5):
+                f.write(str(time()) + logs[randint(0, 2)] + '\n')
+                sleep(5)
             f.close()    
-            sleep(3)
+            sleep(5)
