@@ -135,7 +135,7 @@ class Logging:
             self.fileentry_number_type = fileentry_number_type
         else:
             self.fileentry_number_type = 99999
-            
+
         
         self.error_types = ['WARNING', 'ERROR', 'INFO', 'DEBUG']
         self.run_logs = False
@@ -219,11 +219,13 @@ class Logging:
         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-    def __write_log_to_file(self, file):
+    def __append_log_message(self, filestring):
         '''
-        this function writes a single log message into a log file
+        this function appends a new message to the log string
+        Args:
+            filestring (string):             current log messages
         '''
-        file.write(self.__generate_log_entry())
+        return filestring + self.__generate_log_entry()
         
         
     def __run_logging(self,log_file_path):
@@ -241,29 +243,33 @@ class Logging:
             filename = "logentry_"+self.__generate_logfilename()+".txt"
             filepath = os.path.join(log_file_path, filename)
             
-            with open(filepath, "a") as file:
+            
+            logstring_to_file = ''
+            #when the user wants a random number of entries per log file
+            if self.fileentry_number_type == 99999:
+                fileentry_number = random.randint(0, 15)
+            
+            #when the user passed an integer as number of entries per logfile
+            else:
+                fileentry_number = self.fileentry_number_type
                 
-                #when the user wants a random number of entries per log file
-                if self.fileentry_number_type == 99999:
-                    fileentry_number = random.randint(0, 15)
-                
-                #when the user passed an integer as number of entries per logfile
-                else:
-                    fileentry_number = self.fileentry_number_type
+            #start writing to file
+            for entry in range(fileentry_number):
+                    logstring_to_file = self.__append_log_message(logstring_to_file)
                     
-                #start writing to file
-                for entry in range(fileentry_number):
-                        self.__write_log_to_file(file)
-                        
-                        #nothing
-                        if self.log_time == 2:
-                            time.sleep(2)                                       # Wait for 2 seconds
-                        #otherwise use a random sleep time within 0.1sec to 5.5sec
-                        elif self.log_time == 99999:
-                            time.sleep(random.uniform(0.1, 5.5))                
-                        # use userspecific time
-                        else:
-                            time.sleep(self.log_time)
+                    #nothing
+                    if self.log_time == 2:
+                        time.sleep(2)                                       # Wait for 2 seconds
+                    #otherwise use a random sleep time within 0.1sec to 5.5sec
+                    elif self.log_time == 99999:
+                        time.sleep(random.uniform(0.1, 5.5))                
+                    # use userspecific time
+                    else:
+                        time.sleep(self.log_time)
+                            
+            #create and write to file
+            with open(filepath, "a") as file:
+                file.write(logstring_to_file)
                             
 
 
