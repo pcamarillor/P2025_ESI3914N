@@ -3,6 +3,7 @@ from pyspark.sql.types import (StructType, ShortType, StringType,
                                IntegerType, FloatType, BooleanType, LongType, MapType,
                                DoubleType, DateType, TimestampType, BinaryType, ArrayType)
 from time import time, sleep
+from datetime import datetime
 from random import randint
 
 types_schema = {
@@ -88,11 +89,11 @@ class SparkUtils:
     
     @staticmethod
     def logs(path):
-        logs = [' | WARN | Disk usage 85% | server-node-1', '  | ERROR | 500 Internal Server Error | server-node-2', ' | INFO | User login successful | server-node-1']
+        logs = ['|WARN|Disk usage 85%|server-node-1', '|ERROR|500 Internal Server Error|server-node-2', '|INFO|User login successful|server-node-1']
+
         while(True):
-            f = open(f"{path}/log-{time()}.txt", 'x')
+            f = open(f"{path}/log-{time()}.txt", 'a')
             for _ in range(5):
-                f.write(str(time()) + logs[randint(0, 2)] + '\n')
-                sleep(5)
+                f.write(datetime.now().strftime('%d/%m/%Y %H:%M:%S') + logs[randint(0, 2)] + '\n')
+                sleep(2)
             f.close()    
-            sleep(5)
