@@ -8,6 +8,7 @@ class TrafficListener(StreamingQueryListener):
         print(f"Query made progress: {event.progress}")
         rows = event.progress.numInputRows
         if rows >= 50:
+            
             print("Query volume high.")
 
     def onQueryTerminated(self, event):
