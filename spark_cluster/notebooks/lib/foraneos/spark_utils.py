@@ -300,7 +300,8 @@ class TrafficListener(StreamingQueryListener):
         print(f"Query made progress: {event.progress}")
         
         if num_input_rows >= 50:
-            print("ALERT: High volume of data")
+            send_alert(f"High volume of data: {num_input_rows} rows")
+
 
     def onQueryTerminated(self, event):
         print(f"Query terminated: {event.id}")
