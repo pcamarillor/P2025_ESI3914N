@@ -1,5 +1,6 @@
 from pyspark.sql.types import StructField, StructType, StringType, DoubleType, IntegerType, FloatType, BooleanType, ShortType,LongType, MapType, ArrayType, TimestampType ,DateType
 from pyspark.sql import DataFrame
+from pyspark.sql.streaming import StreamingQueryListener
 import time
 from datetime import datetime
 import random
@@ -289,3 +290,17 @@ class Logging:
         '''
         self.run_logs = False
 
+
+class TrafficListener(StreamingQueryListener):
+    def onQueryStarted(self, event):
+        print(f"Query started: {event.id}")
+
+    def onQueryProgress(self, event):
+        num_input_rows = event.progress.numInputRows
+        print(f"Query made progress: {event.progress}")
+        
+        if num_input_rows >= 50:
+            print("ALERT: High volume of data")
+
+    def onQueryTerminated(self, event):
+        print(f"Query terminated: {event.id}")
