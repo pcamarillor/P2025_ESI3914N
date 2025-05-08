@@ -44,7 +44,7 @@ class SparkUtils:
         
 
         #create list of different columns in dataframe
-        schema_list = [ StructField(  tuple_arg[0], type_dict[tuple_arg[1]], nullable =tuple_arg[2]  ) for tuple_arg in columns_info ]
+        schema_list = [ StructField(  tuple_arg[0], type_dict[tuple_arg[1]], nullable =True  ) for tuple_arg in columns_info ]
     
     
         return StructType(schema_list)
