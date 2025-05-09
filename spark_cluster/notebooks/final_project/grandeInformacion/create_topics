@@ -1,0 +1,7 @@
+docker exec -it 8285cadd2a48 /opt/kafka/bin/kafka-topics.sh --create --zookeeper zookeeper:2181 --replication-factor 1 --partitions 1 --topic kafka-spark-example-0
+
+docker exec -it 8285cadd2a48 /opt/kafka/bin/kafka-topics.sh --create --zookeeper zookeeper:2181 --replication-factor 1 --partitions 1 --topic kafka-spark-example-1
+
+docker exec -it 8285cadd2a48 /opt/kafka/bin/kafka-topics.sh --create --zookeeper zookeeper:2181 --replication-factor 1 --partitions 1 --topic kafka-spark-example-2
+
+docker exec -it 8285cadd2a48 /opt/kafka/bin/kafka-topics.sh --create --zookeeper zookeeper:2181 --replication-factor 1 --partitions 1 --topic kafka-spark-example-3
