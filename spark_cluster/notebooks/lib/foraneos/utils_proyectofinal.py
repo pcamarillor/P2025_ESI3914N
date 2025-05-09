@@ -1,9 +1,11 @@
+import findspark
+findspark.init()
 from pyspark.sql.types import StructField, StructType, StringType, DoubleType, IntegerType, FloatType, BooleanType, ShortType,LongType, MapType, ArrayType, TimestampType ,DateType
 from pyspark.sql import DataFrame
 from pyspark.sql.streaming import StreamingQueryListener
 from kafka import KafkaProducer
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import random
 import string
 import os
@@ -163,7 +165,7 @@ class Producers:
         '''
             init download of stock price history
         '''
-        
+        print(f"Downloading historical data for {self.ticker}")
         try:
             self.hist = self.__get_historical_data()
         except Exception as e:
@@ -194,13 +196,14 @@ class Producers:
         """
         
 
-        now = datetime.now(datetime.timezone.utc)
+        now = datetime.now(timezone.utc)
         #df_final = pd.DataFrame()
 
         times = [now + timedelta(seconds=i * window_seconds) for i in range(n_periods + 1)]
         prices = self.__simulate_gbm_prices(r=r, sigma=sigma, n_periods=n_periods, period_seconds=window_seconds)
 
-        df_prices = pd.DataFrame({'timestamps':pd.to_datetime(times), 'price': prices})
+        #df_prices = pd.DataFrame({'timestamps':pd.to_datetime(times), 'price': prices})
+        df_prices = pd.DataFrame({'price': prices}, index=pd.to_datetime(times))
         #df_final = pd.concat([df_final, df], axis=1)
             
         return df_prices
@@ -229,7 +232,7 @@ class Producers:
         
         # Force float type to prevent dtype=object errors
         sim_prices_df['price'] = pd.to_numeric(sim_prices_df['price'], errors='coerce')
-        sim_prices_df = ohlc_df.dropna()
+        sim_prices_df = sim_prices_df.dropna()
     
         # Ensure timestamp index is datetime
         sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
@@ -242,6 +245,7 @@ class Producers:
         ohlc_df['low']      = sim_prices_df['price'].resample(new_window).min()
         ohlc_df['close']    = sim_prices_df['price'].resample(new_window).last()
         ohlc_df             = ohlc_df.dropna()
+        ohlc_df             = ohlc_df.reset_index()
         
         if ohlc_df.empty:
             print(f"Warning: No data for {self.ticker} after resampling.")
@@ -262,7 +266,7 @@ class Producers:
         
         try:
             self.k_producer = KafkaProducer(
-                bootstrap_servers=self.kafka_servers,
+                bootstrap_servers=self.kafka_server,
                 value_serializer=lambda v: v.encode('utf-8')  # serialize data as string --> fastest
             )
             print("Kafka producer created successfully.")
@@ -273,6 +277,7 @@ class Producers:
         except Exception as ex:
             print("Failed to create Kafka producer: {ex}")
             self.k_producer = None
+            exit()
         
         
         
@@ -285,12 +290,12 @@ class Producers:
         #creates 50 prices in 10sec intervals with random interest rate and votality 
         close_price_window      = 5                             #interval between artificial close prices
         full_price_window       = 5                             #resmaple interval  for all prices in mins
-        resample                = string(full_price_window) + 'min'
+        resample                = str(full_price_window) + 'min'
         #creates 20 price intervals
-        n_prices                = 60/close_price_window * full_price_window  * 20   #number of prices to create
+        n_prices                = int(60/close_price_window * full_price_window  * 20)   #number of prices to create
         self.last = self.hist["Close"].iloc[-1, 0]               #safe last price in history as next initial price
         log_time_logger         =   datetime.now()
-        
+        price_iterator = iter([])
         while self.run_producer:
             
             #get next prices, or produce new prices if exhausted
@@ -298,22 +303,24 @@ class Producers:
                 current_prices = next(price_iterator)
             except:
                 next_close_price_trajectory     = self.__simulate_prices(close_price_window, n_prices, round(random.uniform(0.005, 0.05), 3), round(random.uniform(0.4, 0.05), 3))
+                
                 next_prices_trajectory          = self.__resample_and_aggregate(next_close_price_trajectory, resample)
-                next_close_price_trajectory.set_index('name', inplace=True)
+                
                 price_iterator                  = iter(next_prices_trajectory.iloc())
-                self.last                       = next_prices_trajectory["Close"].iloc[-1, 0]   #safe last simulated price as next init price
+                self.last                       = next_close_price_trajectory["price"].iloc[-1]   #safe last simulated price as next init price
+                current_prices = next(price_iterator)
             
-            
-            log_data   =  "{},{},{},{},{},{}".format(current_prices['timestamps'], self.ticker, 
+            log_data   =  "{},{},{},{},{},{}".format(current_prices['index'], self.ticker, 
                                     current_prices['open'], current_prices['high'], current_prices['low'], current_prices['close'])
             
             
             #wait time if faster than log interval
-            log_timediffer  = datetime.now() - log_time_logger
+            log_timediffer  = (datetime.now() - log_time_logger).total_seconds()
             if  log_timediffer < self.publ_interval:
                 time.sleep(self.publ_interval - log_timediffer)
                 
             self.k_producer.send(self.kafka_topic, log_data)
+            print(log_data)
             log_time_logger =   datetime.now()
     
     
@@ -321,18 +328,18 @@ class Producers:
 
         
         
-    def start_logging(self, log_file_path):
+    def start(self):
         '''
             start the logging loop
         '''
         self.run_producer = True
         self.__init_producer()
-        self.__start_producer(log_file_path)
+        self.__start_producer()
         
         
         
         
-    def stop_logging(self):
+    def close(self):
         '''
             stop the logging loop
         '''

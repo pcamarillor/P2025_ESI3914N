@@ -22,6 +22,7 @@ RUN echo exit 0 > /usr/sbin/policy-rc.d
 
 ENV PATH=${SPARK_HOME}/bin:$PATH
 RUN pip install findspark
+RUN pip install pandas numpy yfinance ta kafka kafka-python
 RUN export PATH="/usr/local/sbt/bin:$PATH" && mkdir -p "/usr/local/sbt" && wget -qO - --no-check-certificate "https://github.com/sbt/sbt/releases/download/v1.9.6/sbt-1.9.6.tgz" | tar xz -C /usr/local/sbt --strip-components=1 && sbt sbtVersion -Dsbt.rootdir=true
 
 RUN cd "/tmp" && \
