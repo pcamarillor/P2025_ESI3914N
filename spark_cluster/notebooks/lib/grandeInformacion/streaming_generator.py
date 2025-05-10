@@ -20,7 +20,7 @@ def generate_streaming_event():
         "genre": random.choice(genres),
         "region": random.choice(regions),
         "recommended": random.choice([True, False]),
-        "timestamp": time.time()
+        "timestamp": time.strftime("%m/%d/%Y")
     }
 
     return event
