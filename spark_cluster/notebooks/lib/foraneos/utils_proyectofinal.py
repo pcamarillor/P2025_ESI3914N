@@ -15,7 +15,8 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import pandas as pd
 import ta  # Technical Analysis library: pip install ta
-
+import copy
+import threading
 
 
 class SparkUtils:
@@ -79,7 +80,8 @@ class SparkUtils:
             
         
             
-            
+global_lock = threading.Lock()
+
             
 class Producers:
     
@@ -104,10 +106,10 @@ class Producers:
         self.kafka_server   = kafka_server
         self.start_date     = start_date    #for stock download
         self.end_date       = end_date      #for stock download
-        self.hist           = None          #downloaded history of stock
-        self.price_iterator = None          #iterator for calculated prices
-        self.last           = None          #last close price from previously simulated prices
-        
+        self.hist           = []              #downloaded history of stock
+        self.price_iterator = iter([])          #iterator for calculated prices
+        self.last           = 0.0            #last close price from previously simulated prices
+        self.hist_lock      = threading.Lock()
         
         
     def __get_historical_data(self):
@@ -127,7 +129,9 @@ class Producers:
         if self.end_date is None:
             self.end_date = datetime.today().strftime("%Y-%m-%d")
 
-        return yf.download(self.ticker, start=self.start_date, end=self.end_date)[["Close"]]
+        with global_lock:
+            downloaded = yf.download(self.ticker, start=self.start_date, end=self.end_date, progress=False, threads=True)
+            return downloaded
     
     
     
@@ -165,9 +169,11 @@ class Producers:
         '''
             init download of stock price history
         '''
-        print(f"Downloading historical data for {self.ticker}")
+
         try:
-            self.hist = self.__get_historical_data()
+            with self.hist_lock:
+                self.hist = self.__get_historical_data()
+                print(f"Successfully downloaded historical data for {self.ticker}")
         except Exception as e:
             print(f"Error downloading {self.ticker}: {e}")
             exit()
@@ -293,7 +299,7 @@ class Producers:
         resample                = str(full_price_window) + 'min'
         #creates 20 price intervals
         n_prices                = int(60/close_price_window * full_price_window  * 20)   #number of prices to create
-        self.last = self.hist["Close"].iloc[-1, 0]               #safe last price in history as next initial price
+        self.last               = self.hist["Close"].iloc[-1, 0]               #safe last price in history as next initial price
         log_time_logger         =   datetime.now()
         price_iterator = iter([])
         while self.run_producer:
