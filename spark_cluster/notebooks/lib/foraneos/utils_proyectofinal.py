@@ -85,7 +85,7 @@ class SparkUtils:
 GLOBAL_LOCK = threading.Lock()
 
             
-class Producers:
+class Stock_Producer:
     def __init__(self, ticker: string, kafka_server: string, kafka_topic: string, publ_interval: float = 2.0, 
                  full_price_window: int = 5, close_price_window: int = 5, start_date: string = "2025-01-01", end_date: str = None):
         '''
@@ -222,9 +222,8 @@ class Producers:
         '''
 
         try:
-            with self.hist_lock:
-                self.hist = self.__get_historical_data()
-                print(f"Successfully downloaded historical data for {self.TICKER}")
+            self.hist = self.__get_historical_data()
+            print(f"Successfully downloaded historical data for {self.TICKER}")
         except Exception as e:
             print(f"Error downloading {self.TICKER}: {e}")
             exit()
@@ -338,6 +337,7 @@ class Producers:
             Starts a loop that sends logging data to a Kafka topic at a specific interval.
             This method is called in the start() method to begin the logging process.
             The loop generates new prices based on the historical data and sends them to the Kafka topic.
+            It also logs the time taken to send messages and the number of messages sent and saves this information to a file.
         '''
         
         #interval at which simulated prices should be resampled to calculate OHLC prices
@@ -345,6 +345,7 @@ class Producers:
         #Create so many initial close prices that we can then publish 20 OHLC prices
         n_prices                = int(60/self.CLOSE_RPICE_WINDOW * self.FULL_PRICE_WINDOW  * 20)   #number of prices to create
         self.last               = self.hist["Close"].iloc[-1, 0]               #safe last price of history as next initial price
+        starting_log_time       = datetime.now()                               #time reference for msg counter
         log_time_logger         = datetime.now()                               #time reference for publishing time
         price_iterator = iter([])                                              #init an iterator for easy price access
         
@@ -364,7 +365,9 @@ class Producers:
                 self.last                       = next_close_price_trajectory["price"].iloc[-1]   #safe last simulated price as next init price
                 current_prices                  = next(price_iterator)                            #get first price from iterator
                 with open(self.msg_counter_sink_path, 'w') as f:
-                    f.write(str(self.msg_counter))
+                    time_so_far = (datetime.now() - starting_log_time).total_seconds()
+                    f.write(f"time:{time_so_far} , counter:{self.msg_counter}")
+                    print(f"\nTime so far: {time_so_far} seconds, Messages sent: {self.msg_counter} for Ticker {self.TICKER}")
             
             #create new message to publish with a new OHLC price
             #in format: date time , Stock-ID , Open , High, Low, Close
@@ -376,7 +379,7 @@ class Producers:
             if  log_timediffer < self.PUBL_INTERVAL:
                 time.sleep(self.PUBL_INTERVAL - log_timediffer)
                 
-            self.k_producer.send(self.kafka_topic, log_data)
+            self.k_producer.send(self.KAFKA_TOPIC, log_data)
             self.msg_counter += 1
             print(log_data)
             log_time_logger =   datetime.now()
