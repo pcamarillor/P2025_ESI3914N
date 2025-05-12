@@ -257,52 +257,52 @@ class Stock_Producer:
         # Simulate prices using GBM
         prices = self.__simulate_gbm_prices(r=r, sigma=sigma, n_periods=n_periods, period_seconds=window_seconds)
         # Create a DataFrame with the simulated prices and timestamps as index
-        df_prices = pd.DataFrame({'price': prices}, index=pd.to_datetime(times))
+        df_prices = pd.DataFrame({'price': prices, 'timestamp': pd.to_datetime(times)})
             
         return df_prices
 
 
 
 
-    def __resample_and_aggregate(self, df ,new_window):
-        """
-            Processes simulated prices into OHLC format (Open, High, low, Close)
-            based on the given resampling window and a data frame with timestamps as index
-            and the close prics of a ticker symbol in the column.
+    # def __resample_and_aggregate(self, df ,new_window):
+    #     """
+    #         Processes simulated prices into OHLC format (Open, High, low, Close)
+    #         based on the given resampling window and a data frame with timestamps as index
+    #         and the close prics of a ticker symbol in the column.
 
-            Args:
-                df (pd.DataFrame):  DataFrame with timestamps as index and ticker symbols as columns.
-                new_window (str):   Pandas-compatible resampling window (e.g., '5min', '15min').
+    #         Args:
+    #             df (pd.DataFrame):  DataFrame with timestamps as index and ticker symbols as columns.
+    #             new_window (str):   Pandas-compatible resampling window (e.g., '5min', '15min').
 
-            Returns:
-                pd.DataFrame:       List of dataframes (one per ticker) with OHLC prices
-        """
+    #         Returns:
+    #             pd.DataFrame:       List of dataframes (one per ticker) with OHLC prices
+    #     """
         
-        # Create OHLC DataFrame directly from price data
-        sim_prices_df = df.copy()
-        # Force float type to prevent dtype=object errors
-        sim_prices_df['price'] = pd.to_numeric(sim_prices_df['price'], errors='coerce')
-        sim_prices_df = sim_prices_df.dropna()
-        # Ensure timestamp index is datetime
-        sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
+    #     # Create OHLC DataFrame directly from price data
+    #     sim_prices_df = df.copy()
+    #     # Force float type to prevent dtype=object errors
+    #     sim_prices_df['price'] = pd.to_numeric(sim_prices_df['price'], errors='coerce')
+    #     sim_prices_df = sim_prices_df.dropna()
+    #     # Ensure timestamp index is datetime
+    #     sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
         
-        ohlc_df = pd.DataFrame()
+    #     ohlc_df = pd.DataFrame()
         
-        # Resample to get OHLC
-        ohlc_df['open']     = sim_prices_df['price'].resample(new_window).first()
-        ohlc_df['high']     = sim_prices_df['price'].resample(new_window).max()
-        ohlc_df['low']      = sim_prices_df['price'].resample(new_window).min()
-        ohlc_df['close']    = sim_prices_df['price'].resample(new_window).last()
-        ohlc_df             = ohlc_df.dropna()
-        #convert inaccesible index columnn into normal date-time column
-        #and add new integer-based index column 
-        ohlc_df             = ohlc_df.reset_index()
+    #     # Resample to get OHLC
+    #     ohlc_df['open']     = sim_prices_df['price'].resample(new_window).first()
+    #     ohlc_df['high']     = sim_prices_df['price'].resample(new_window).max()
+    #     ohlc_df['low']      = sim_prices_df['price'].resample(new_window).min()
+    #     ohlc_df['close']    = sim_prices_df['price'].resample(new_window).last()
+    #     ohlc_df             = ohlc_df.dropna()
+    #     #convert inaccesible index columnn into normal date-time column
+    #     #and add new integer-based index column 
+    #     ohlc_df             = ohlc_df.reset_index()
         
-        if ohlc_df.empty:
-            print(f"Warning: No data for {self.TICKER} after resampling.")
-            exit()
+    #     if ohlc_df.empty:
+    #         print(f"Warning: No data for {self.TICKER} after resampling.")
+    #         exit()
 
-        return ohlc_df
+    #     return ohlc_df
 
 
 
@@ -341,7 +341,7 @@ class Stock_Producer:
         '''
         
         #interval at which simulated prices should be resampled to calculate OHLC prices
-        resample                = str(self.FULL_PRICE_WINDOW) + 'min'
+        
         #Create so many initial close prices that we can then publish 20 OHLC prices
         n_prices                = int(60/self.CLOSE_RPICE_WINDOW * self.FULL_PRICE_WINDOW  * 20)   #number of prices to create
         self.last               = self.hist["Close"].iloc[-1, 0]               #safe last price of history as next initial price
@@ -359,9 +359,9 @@ class Stock_Producer:
                 #simulat new prices with random interest rate and volatility
                 next_close_price_trajectory     = self.__simulate_prices(self.CLOSE_RPICE_WINDOW, n_prices, round(random.uniform(0.005, 0.05), 3), round(random.uniform(0.4, 0.05), 3))
                 #resample and aggregate to get OHLC prices
-                next_prices_trajectory          = self.__resample_and_aggregate(next_close_price_trajectory, resample)
+                #next_prices_trajectory          = self.__resample_and_aggregate(next_close_price_trajectory, resample)
                 #create an iterator and save last price
-                price_iterator                  = iter(next_prices_trajectory.iloc())
+                price_iterator                  = iter(next_close_price_trajectory.iloc())
                 self.last                       = next_close_price_trajectory["price"].iloc[-1]   #safe last simulated price as next init price
                 current_prices                  = next(price_iterator)                            #get first price from iterator
                 with open(self.msg_counter_sink_path, 'w') as f:
@@ -371,8 +371,8 @@ class Stock_Producer:
             
             #create new message to publish with a new OHLC price
             #in format: date time , Stock-ID , Open , High, Low, Close
-            log_data   =  "{},{},{},{},{},{}".format(current_prices['index'], self.TICKER, 
-                                    current_prices['open'], current_prices['high'], current_prices['low'], current_prices['close'])
+            log_data   =  "{},{},{}".format(current_prices['timestamp'], self.TICKER, 
+                                    current_prices['price'])
                         
             #wait time if process was faster than defined log interval
             log_timediffer  = (datetime.now() - log_time_logger).total_seconds()
@@ -412,6 +412,74 @@ class Stock_Producer:
         self.k_producer.close()
         with open(self.msg_counter_sink_path, 'w') as f:
             f.write(str(self.msg_counter))
+
+
+
+
+
+def resample_and_aggregate(new_window: int=15):
+    
+    resample_interval = str(new_window) + 'min'
+    
+    def start_resampling(df):
+        """
+        Processes simulated prices into OHLC format, computes indicators, and adds lag features.
+
+        Args:
+            df (pd.DataFrame): DataFrame with timestamps as index and ticker symbols as columns.
+            new_window (str): Pandas-compatible resampling window (e.g., '5min', '15min').
+
+        Returns:
+            List[pd.DataFrame]: List of dataframes (one per ticker) with:
+                - OHLC prices
+                - 4 technical indicators: RSI, Williams %R, Ultimate Oscillator, EMA
+                - 5 lagged close prices
+        """
+
+        ticker = df['company'][0]
+        # Create OHLC DataFrame directly from price data
+        sim_prices_df = df.copy()
+        # Force float type to prevent dtype=object errors
+        sim_prices_df['price'] = pd.to_numeric(sim_prices_df['price'], errors='coerce')
+        sim_prices_df = sim_prices_df.dropna()
+        # Ensure timestamp index is datetime
+        sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
+        
+        ohlc_df = pd.DataFrame()
+        
+        # Resample to get OHLC
+        ohlc_df['open']     = sim_prices_df['price'].resample(resample_interval).first()
+        ohlc_df['high']     = sim_prices_df['price'].resample(resample_interval).max()
+        ohlc_df['low']      = sim_prices_df['price'].resample(resample_interval).min()
+        ohlc_df['close']    = sim_prices_df['price'].resample(resample_interval).last()
+        ohlc_df             = ohlc_df.dropna()
+        #convert inaccesible index columnn into normal date-time column
+        #and add new integer-based index column 
+        ohlc_df             = ohlc_df.reset_index()
+        
+        if ohlc_df.empty:
+            print(f"Warning: No data for {ticker} after resampling.")
+            exit()
+
+        # Technical indicators
+        ohlc_df['williams_r'] = ta.momentum.WilliamsRIndicator(
+            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+        ).williams_r()
+
+        ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close']).rsi()
+        ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
+            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+        ).ultimate_oscillator()
+        ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close'], window=14).ema_indicator()
+
+        # Lag features
+        for lag in range(1, 6):
+            ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
+
+        ohlc_df = ohlc_df.dropna()
+
+        return ohlc_df
+    return start_resampling
 
 
 
