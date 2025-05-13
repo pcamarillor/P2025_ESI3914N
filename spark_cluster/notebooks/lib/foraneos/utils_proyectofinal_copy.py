@@ -393,25 +393,26 @@ def resample_and_aggregate(new_window: int=15 ):
         try:
             resample_interval = str(new_window) + 'min'
                         
-            ticker = df["company"].iloc[0]
+            #ticker = df["company"].iloc[0]
             # Create OHLC DataFrame directly from price data
-            try:
-                df = df.drop('company', axis=1)
-            except:
-                pass
+            # try:
+            #     df = df.drop('company', axis=1)
+            # except:
+            #     pass
 
             sim_prices_df = df.copy()
-            #pd.DataFrame({'timestamp': df['timestamp'], 'ticker': df['company'], 'price': df['close']} ,index=df['timestamp'])
+            sim_prices_df['timestamp'] = pd.to_datetime(sim_prices_df['timestamp'])
             sim_prices_df.set_index('timestamp', inplace=True)
             # Force float type to prevent dtype=object errors
             sim_prices_df['price'] = pd.to_numeric(sim_prices_df['close'], errors='coerce')
             sim_prices_df = sim_prices_df.dropna()
             # Ensure timestamp index is datetime
-            sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
+            
             ohlc_df = pd.DataFrame()
             
         
             # Resample to get OHLC
+            ohlc_df['company'] = sim_prices_df['company'].resample(resample_interval).first()
             ohlc_df['open']     = sim_prices_df['price'].resample(resample_interval).first()
             ohlc_df['high']     = sim_prices_df['price'].resample(resample_interval).max()
             ohlc_df['low']      = sim_prices_df['price'].resample(resample_interval).min()
@@ -420,79 +421,69 @@ def resample_and_aggregate(new_window: int=15 ):
             #convert inaccesible index columnn into normal date-time column
             #and add new integer-based index column 
             ohlc_df             = ohlc_df.reset_index()
-            
-            #if ohlc_df.empty:
-            #    print(f"Warning: No data for {ticker} after resampling.")
-            #    continue
-
-            # Technical indicators
-            ohlc_df['williams_r'] = ta.momentum.WilliamsRIndicator(
-                high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
-            ).williams_r()
-
-            ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close'], window=6).rsi()
-            ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
-                high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close'],
-                 window1=3, window2= 6, window3=12
-            ).ultimate_oscillator()
-            ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close'], window=6).ema_indicator()
-
-            # Lag features
-            for lag in range(1, 6):
-                ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
-
-
-            # for the indicators all have NaN so this line would drop everything
-            #ohlc_df = ohlc_df.dropna()
-            #
-            
-            try:
-                ohlc_df = ohlc_df.drop('company', axis=1)
-            except:
-                pass
-        
-            
-            #fail save for debugging
-            if ohlc_df.empty:
-                return pd.DataFrame([{
-                    "timestamp": pd.Timestamp.now(),
-                    "open": 0.0,
-                    "high": 0.0,
-                    "low": 0.0,
-                    "close": 0.0,
-                    "rsi": 0.0,
-                    "williams_r": 0.0,
-                    "ultimate_osc": 0.0,
-                    "ema": 0.0,
-                    "close_lag_1": 0.0,
-                    "close_lag_2": 0.0,
-                    "close_lag_3": 0.0,
-                    "close_lag_4": 0.0,
-                    "close_lag_5": 0.0,
-                    }])
             return ohlc_df
-    
         except Exception as e:
-            logging.error(f"No logging due to exceptio")
             #fail save for debugging
-            return pd.DataFrame([{
-                    "timestamp": pd.Timestamp.now(),
-                    "open": 3.0,
-                    "high": 3.0,
-                    "low": 3.0,
-                    "close": 3.0,
-                    "rsi": 3.0,
-                    "williams_r": 3.0,
-                    "ultimate_osc": 3.0,
-                    "ema": 3.0,
-                    "close_lag_1": 3.0,
-                    "close_lag_2": 3.0,
-                    "close_lag_3": 3.0,
-                    "close_lag_4": 3.0,
-                    "close_lag_5": 3.0,
-                    }])
-    
+            return pd.DataFrame()   
+        
+        
     return start_resampling
+
+
+
+
+def calc_techincal_indicators(df):
+
+    
+    try:
+        ohlc_df = df.copy()
+        # Technical indicators
+        print("Calculating technical indicators...")
+        ohlc_df['williams_r'] = ta.momentum.WilliamsRIndicator(
+            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+        ).williams_r()
+
+        ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close'], window=6).rsi()
+        ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
+            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+        ).ultimate_oscillator()
+        ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close']).ema_indicator()
+
+        # Lag features
+        for lag in range(1, 6):
+            print(f"Creating lag feature for lag {lag}...")
+            ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
+
+
+        # for the indicators all have NaN so this line would drop everything
+        print(ohlc_df.head())
+        print(ohlc_df.iloc[0])
+        print("Dropping NaN values...")
+        ohlc_df = ohlc_df.dropna()
+        
+        return ohlc_df
+        #
+        
+    except:        
+        #fail save for debugging
+        if ohlc_df.empty:
+            print("is empty")
+            return pd.DataFrame([{
+                "timestamp": pd.Timestamp.now(),
+                "open": 0.0,
+                "high": 0.0,
+                "low": 0.0,
+                "close": 0.0,
+                "rsi": 0.0,
+                "williams_r": 0.0,
+                "ultimate_osc": 0.0,
+                "ema": 0.0,
+                "close_lag_1": 0.0,
+                "close_lag_2": 0.0,
+                "close_lag_3": 0.0,
+                "close_lag_4": 0.0,
+                "close_lag_5": 0.0,
+                }])
 
 
 

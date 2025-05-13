@@ -9,6 +9,7 @@ services:
       - spark_cluster_default
 
   kafka:
+    container_name: kafka_broker
     image: wurstmeister/kafka:latest
     ports:
       - "9092:9092"
@@ -23,7 +24,12 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_CREATE_TOPICS: "my-topic:1:1"
+      KAFKA_LOG_RETENTION_MS: 7200000  # Retain logs for 72 hours (in milliseconds)
+      KAFKA_LOG_RETENTION_BYTES: 1073741824  # Retain logs up to 1GB
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824  # Log segment size: 1GB
+      KAFKA_LOG_CLEANUP_POLICY: delete
     volumes:
+      - /mnt/d/Eigene_Dokumente/Uni/Master/Mexiko/Big_Data/kafka_data:/var/lib/kafka/data
       - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
