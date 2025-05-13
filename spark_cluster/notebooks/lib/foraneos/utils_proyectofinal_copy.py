@@ -17,7 +17,7 @@ import pandas as pd
 import ta  # Technical Analysis library: pip install ta
 import copy
 import threading
-
+import logging
 
 class SparkUtils:
     
@@ -321,13 +321,14 @@ class Stock_Producer:
             )
             print("Kafka producer created successfully.")
             
-            #download stock history as basis for price simulation
-            self.__download_stock_hist()
-            
         except Exception as ex:
             print("Failed to create Kafka producer: {ex}")
             self.k_producer = None
             exit()
+            
+      
+        #download stock history as basis for price simulation
+        self.__download_stock_hist()
      
       
       
@@ -381,7 +382,7 @@ class Stock_Producer:
                 
             self.k_producer.send(self.KAFKA_TOPIC, log_data)
             self.msg_counter += 1
-            print(log_data)
+            #print(log_data)
             log_time_logger =   datetime.now()
 
 
@@ -414,14 +415,24 @@ class Stock_Producer:
             f.write(str(self.msg_counter))
 
 
+logger = logging.getLogger("resample_and_aggregate")
+logger.setLevel(logging.INFO)
 
+# Create a file handler
+file_handler = logging.FileHandler("/home/jovyan/notebooks/data/final_project_ParDeForaneos/resample_debug.log")
+file_handler.setLevel(logging.INFO)
+
+# Create a formatter and add it to the handler
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add the handler to the logger
+logger.addHandler(file_handler)
 
 
 def resample_and_aggregate(new_window: int=15):
     
-    resample_interval = str(new_window) + 'min'
-    
-    def start_resampling(df):
+    def start_resampling(iterator):
         """
         Processes simulated prices into OHLC format, computes indicators, and adds lag features.
 
@@ -435,50 +446,77 @@ def resample_and_aggregate(new_window: int=15):
                 - 4 technical indicators: RSI, Williams %R, Ultimate Oscillator, EMA
                 - 5 lagged close prices
         """
-
-        ticker = df['company'][0]
-        # Create OHLC DataFrame directly from price data
-        sim_prices_df = df.copy()
-        # Force float type to prevent dtype=object errors
-        sim_prices_df['price'] = pd.to_numeric(sim_prices_df['price'], errors='coerce')
-        sim_prices_df = sim_prices_df.dropna()
-        # Ensure timestamp index is datetime
-        sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
         
-        ohlc_df = pd.DataFrame()
+
+        for df in iterator:
+            #try:
+            resample_interval = str(new_window) + 'min'
+            
+            logging.info(f"Schema of df: {df.dtypes}")
+            logging.info(f"First few rows: {df.head()}")
+            
+            ticker = df["company"].iloc[0]
+            # Create OHLC DataFrame directly from price data
+            try:
+                df = df.drop('company', axis=1)
+            except:
+                pass
+            sim_prices_df = df.copy()
+            #pd.DataFrame({'timestamp': df['timestamp'], 'ticker': df['company'], 'price': df['close']} ,index=df['timestamp'])
+            sim_prices_df.set_index('timestamp', inplace=True)
+            # Force float type to prevent dtype=object errors
+            sim_prices_df['price'] = pd.to_numeric(sim_prices_df['close'], errors='coerce')
+            sim_prices_df = sim_prices_df.dropna()
+            # Ensure timestamp index is datetime
+            sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
+            logging.info(f"Schema of simple: {sim_prices_df.dtypes}")
+            logging.info(f"First few rows: {sim_prices_df.head()}")
+            ohlc_df = pd.DataFrame()
+            
+           
+            # Resample to get OHLC
+            ohlc_df['open']     = sim_prices_df['price'].resample(resample_interval).first()
+            ohlc_df['high']     = sim_prices_df['price'].resample(resample_interval).max()
+            ohlc_df['low']      = sim_prices_df['price'].resample(resample_interval).min()
+            ohlc_df['close']    = sim_prices_df['price'].resample(resample_interval).last()
+            ohlc_df             = ohlc_df.dropna()
+            #convert inaccesible index columnn into normal date-time column
+            #and add new integer-based index column 
+            ohlc_df             = ohlc_df.reset_index()
+            
+            #if ohlc_df.empty:
+            #    print(f"Warning: No data for {ticker} after resampling.")
+            #    continue
+
+            # Technical indicators
+            ohlc_df['williams_r'] = ta.momentum.WilliamsRIndicator(
+                high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+            ).williams_r()
+
+            ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close']).rsi()
+            ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
+                high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+            ).ultimate_oscillator()
+            ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close'], window=14).ema_indicator()
+
+            # Lag features
+            for lag in range(1, 6):
+                ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
+
+            ohlc_df = ohlc_df.dropna()
+            try:
+                ohlc_df = ohlc_df.drop('company', axis=1)
+            except:
+                pass
+            
+            logging.info(f"Schema of ohlc_df: {ohlc_df.dtypes}")
+            logging.info(f"First few rows: {ohlc_df.head()}")
+
+            yield ohlc_df
         
-        # Resample to get OHLC
-        ohlc_df['open']     = sim_prices_df['price'].resample(resample_interval).first()
-        ohlc_df['high']     = sim_prices_df['price'].resample(resample_interval).max()
-        ohlc_df['low']      = sim_prices_df['price'].resample(resample_interval).min()
-        ohlc_df['close']    = sim_prices_df['price'].resample(resample_interval).last()
-        ohlc_df             = ohlc_df.dropna()
-        #convert inaccesible index columnn into normal date-time column
-        #and add new integer-based index column 
-        ohlc_df             = ohlc_df.reset_index()
-        
-        if ohlc_df.empty:
-            print(f"Warning: No data for {ticker} after resampling.")
-            exit()
-
-        # Technical indicators
-        ohlc_df['williams_r'] = ta.momentum.WilliamsRIndicator(
-            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
-        ).williams_r()
-
-        ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close']).rsi()
-        ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
-            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
-        ).ultimate_oscillator()
-        ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close'], window=14).ema_indicator()
-
-        # Lag features
-        for lag in range(1, 6):
-            ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
-
-        ohlc_df = ohlc_df.dropna()
-
-        return ohlc_df
+            # except Exception as e:
+            #     yield pd.DataFrame()
+    
     return start_resampling
 
 
