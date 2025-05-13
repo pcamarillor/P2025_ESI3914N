@@ -57,27 +57,7 @@ class SparkUtils:
         schema_list = [ StructField(  tuple_arg[0], type_dict[tuple_arg[1]], nullable =True  ) for tuple_arg in columns_info ]
     
     
-        return StructType(schema_list)
-    
-    
-    
-    @staticmethod
-    def clean_df(df, correction_dict):
-        '''
-        Method to clean Null values from a df
-        
-        Args:
-            df (DataFrame):         The PySpark DataFrame to clean     
-            correction_dict (dict): Dictionary containing the relevant information as 
-                                    - key = ColumnName
-                                    - value = ReplaceValue
-                                    
-        Returns:
-            corrected DataFrame   
-        '''
-        return df.fillna(correction_dict)
-        
-            
+        return StructType(schema_list)      
         
             
             
@@ -373,44 +353,42 @@ class Stock_Producer:
 
 
 def resample_and_aggregate(new_window: int=15 ):
-    
+    """
+    Resamples and aggregates stock prices into OHLC format.
+    This function is a wrapper for the start_resampling function to be used in kafka streaming
+
+    Args:
+        new_window (int, optional):     interval of resampling in minutes. Defaults to 15.
+        
+    Returns:
+        Callable:                     Function to process the DataFrame and return OHLC prices.
+    """
     
     def start_resampling(df):
         """
-        Processes simulated prices into OHLC format, computes indicators, and adds lag features.
+        Processes simulated prices into OHLC format
 
         Args:
             df (pd.DataFrame): DataFrame with timestamps as index and ticker symbols as columns.
-            new_window (str): Pandas-compatible resampling window (e.g., '5min', '15min').
 
         Returns:
-            List[pd.DataFrame]: List of dataframes (one per ticker) with:
-                - OHLC prices
-                - 4 technical indicators: RSI, Williams %R, Ultimate Oscillator, EMA
-                - 5 lagged close prices
+            pd.DataFrame:   with Timestamp, Company and resampled OHLC prices
         """
         
         try:
             resample_interval = str(new_window) + 'min'
                         
-            #ticker = df["company"].iloc[0]
-            # Create OHLC DataFrame directly from price data
-            # try:
-            #     df = df.drop('company', axis=1)
-            # except:
-            #     pass
-
             sim_prices_df = df.copy()
+            #make sure timestamp is in datetime format
             sim_prices_df['timestamp'] = pd.to_datetime(sim_prices_df['timestamp'])
+            #for resampling we need to set the timestamp as index
             sim_prices_df.set_index('timestamp', inplace=True)
             # Force float type to prevent dtype=object errors
             sim_prices_df['price'] = pd.to_numeric(sim_prices_df['close'], errors='coerce')
             sim_prices_df = sim_prices_df.dropna()
-            # Ensure timestamp index is datetime
             
             ohlc_df = pd.DataFrame()
             
-        
             # Resample to get OHLC
             ohlc_df['company'] = sim_prices_df['company'].resample(resample_interval).first()
             ohlc_df['open']     = sim_prices_df['price'].resample(resample_interval).first()
@@ -418,10 +396,12 @@ def resample_and_aggregate(new_window: int=15 ):
             ohlc_df['low']      = sim_prices_df['price'].resample(resample_interval).min()
             ohlc_df['close']    = sim_prices_df['price'].resample(resample_interval).last()
             ohlc_df             = ohlc_df.dropna()
+            
             #convert inaccesible index columnn into normal date-time column
             #and add new integer-based index column 
             ohlc_df             = ohlc_df.reset_index()
             return ohlc_df
+        
         except Exception as e:
             #fail save for debugging
             return pd.DataFrame()   
@@ -433,57 +413,62 @@ def resample_and_aggregate(new_window: int=15 ):
 
 
 def calc_techincal_indicators(df):
+    '''
+        Calculates technical indicators for a given DataFrame containing OHLC stock prices.
+        The function computes the following indicators:
+        - Williams %R
+        - Ultimate Oscillator
+        - Relative Strength Index (RSI)
+        - Exponential Moving Average (EMA)
+        - Lag features for the close price (1 to 5 lags)
+        
+        Args:
+            df (pd.DataFrame): DataFrame with columns: 'timestamp', 'company', 'open', 'high', 'low', 'close'.
+            
+        Returns:
+            pd.DataFrame: DataFrame with the same columns as input, plus the calculated indicators and lag features.
+    '''
 
     
     try:
         ohlc_df = df.copy()
+        ohlc_df.set_index('timestamp', inplace=True)
         # Technical indicators
         print("Calculating technical indicators...")
+
         ohlc_df['williams_r'] = ta.momentum.WilliamsRIndicator(
             high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
         ).williams_r()
+        
 
-        ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close'], window=6).rsi()
         ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
-            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+            high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close'], window1 = 3, window2= 6, window3 = 12
         ).ultimate_oscillator()
+        
+        ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close']).rsi()
+        
         ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close']).ema_indicator()
 
         # Lag features
+        print(f"Creating lag features...")
         for lag in range(1, 6):
-            print(f"Creating lag feature for lag {lag}...")
             ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
 
 
         # for the indicators all have NaN so this line would drop everything
-        print(ohlc_df.head())
-        print(ohlc_df.iloc[0])
+
         print("Dropping NaN values...")
         ohlc_df = ohlc_df.dropna()
+        ohlc_df.reset_index(inplace=True)
         
         return ohlc_df
         #
         
     except:        
-        #fail save for debugging
+        #fail save 
         if ohlc_df.empty:
-            print("is empty")
-            return pd.DataFrame([{
-                "timestamp": pd.Timestamp.now(),
-                "open": 0.0,
-                "high": 0.0,
-                "low": 0.0,
-                "close": 0.0,
-                "rsi": 0.0,
-                "williams_r": 0.0,
-                "ultimate_osc": 0.0,
-                "ema": 0.0,
-                "close_lag_1": 0.0,
-                "close_lag_2": 0.0,
-                "close_lag_3": 0.0,
-                "close_lag_4": 0.0,
-                "close_lag_5": 0.0,
-                }])
+            print("ohlc_df is empty")
+            exit()
 
 
 
