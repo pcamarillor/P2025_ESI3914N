@@ -263,50 +263,6 @@ class Stock_Producer:
 
 
 
-
-    # def __resample_and_aggregate(self, df ,new_window):
-    #     """
-    #         Processes simulated prices into OHLC format (Open, High, low, Close)
-    #         based on the given resampling window and a data frame with timestamps as index
-    #         and the close prics of a ticker symbol in the column.
-
-    #         Args:
-    #             df (pd.DataFrame):  DataFrame with timestamps as index and ticker symbols as columns.
-    #             new_window (str):   Pandas-compatible resampling window (e.g., '5min', '15min').
-
-    #         Returns:
-    #             pd.DataFrame:       List of dataframes (one per ticker) with OHLC prices
-    #     """
-        
-    #     # Create OHLC DataFrame directly from price data
-    #     sim_prices_df = df.copy()
-    #     # Force float type to prevent dtype=object errors
-    #     sim_prices_df['price'] = pd.to_numeric(sim_prices_df['price'], errors='coerce')
-    #     sim_prices_df = sim_prices_df.dropna()
-    #     # Ensure timestamp index is datetime
-    #     sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
-        
-    #     ohlc_df = pd.DataFrame()
-        
-    #     # Resample to get OHLC
-    #     ohlc_df['open']     = sim_prices_df['price'].resample(new_window).first()
-    #     ohlc_df['high']     = sim_prices_df['price'].resample(new_window).max()
-    #     ohlc_df['low']      = sim_prices_df['price'].resample(new_window).min()
-    #     ohlc_df['close']    = sim_prices_df['price'].resample(new_window).last()
-    #     ohlc_df             = ohlc_df.dropna()
-    #     #convert inaccesible index columnn into normal date-time column
-    #     #and add new integer-based index column 
-    #     ohlc_df             = ohlc_df.reset_index()
-        
-    #     if ohlc_df.empty:
-    #         print(f"Warning: No data for {self.TICKER} after resampling.")
-    #         exit()
-
-    #     return ohlc_df
-
-
-
-
     def __init_producer(self):
         '''
             Initializes a Kafka producer on a given server with a text serializer.
@@ -359,8 +315,6 @@ class Stock_Producer:
             except:
                 #simulat new prices with random interest rate and volatility
                 next_close_price_trajectory     = self.__simulate_prices(self.CLOSE_RPICE_WINDOW, n_prices, round(random.uniform(0.005, 0.05), 3), round(random.uniform(0.4, 0.05), 3))
-                #resample and aggregate to get OHLC prices
-                #next_prices_trajectory          = self.__resample_and_aggregate(next_close_price_trajectory, resample)
                 #create an iterator and save last price
                 price_iterator                  = iter(next_close_price_trajectory.iloc())
                 self.last                       = next_close_price_trajectory["price"].iloc[-1]   #safe last simulated price as next init price
@@ -368,10 +322,10 @@ class Stock_Producer:
                 with open(self.msg_counter_sink_path, 'w') as f:
                     time_so_far = (datetime.now() - starting_log_time).total_seconds()
                     f.write(f"time:{time_so_far} , counter:{self.msg_counter}")
-                    print(f"\nTime so far: {time_so_far} seconds, Messages sent: {self.msg_counter} for Ticker {self.TICKER}")
+                    #print(f"\nTime so far: {time_so_far} seconds, Messages sent: {self.msg_counter} for Ticker {self.TICKER}")
             
             #create new message to publish with a new OHLC price
-            #in format: date time , Stock-ID , Open , High, Low, Close
+            #in format: date time , Stock-ID , Close
             log_data   =  "{},{},{}".format(current_prices['timestamp'], self.TICKER, 
                                     current_prices['price'])
                         
@@ -415,24 +369,13 @@ class Stock_Producer:
             f.write(str(self.msg_counter))
 
 
-logger = logging.getLogger("resample_and_aggregate")
-logger.setLevel(logging.INFO)
-
-# Create a file handler
-file_handler = logging.FileHandler("/home/jovyan/notebooks/data/final_project_ParDeForaneos/resample_debug.log")
-file_handler.setLevel(logging.INFO)
-
-# Create a formatter and add it to the handler
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-
-# Add the handler to the logger
-logger.addHandler(file_handler)
 
 
-def resample_and_aggregate(new_window: int=15):
+
+def resample_and_aggregate(new_window: int=15 ):
     
-    def start_resampling(iterator):
+    
+    def start_resampling(df):
         """
         Processes simulated prices into OHLC format, computes indicators, and adds lag features.
 
@@ -447,20 +390,16 @@ def resample_and_aggregate(new_window: int=15):
                 - 5 lagged close prices
         """
         
-
-        for df in iterator:
-            #try:
+        try:
             resample_interval = str(new_window) + 'min'
-            
-            logging.info(f"Schema of df: {df.dtypes}")
-            logging.info(f"First few rows: {df.head()}")
-            
+                        
             ticker = df["company"].iloc[0]
             # Create OHLC DataFrame directly from price data
             try:
                 df = df.drop('company', axis=1)
             except:
                 pass
+
             sim_prices_df = df.copy()
             #pd.DataFrame({'timestamp': df['timestamp'], 'ticker': df['company'], 'price': df['close']} ,index=df['timestamp'])
             sim_prices_df.set_index('timestamp', inplace=True)
@@ -469,11 +408,9 @@ def resample_and_aggregate(new_window: int=15):
             sim_prices_df = sim_prices_df.dropna()
             # Ensure timestamp index is datetime
             sim_prices_df.index = pd.to_datetime(sim_prices_df.index)
-            logging.info(f"Schema of simple: {sim_prices_df.dtypes}")
-            logging.info(f"First few rows: {sim_prices_df.head()}")
             ohlc_df = pd.DataFrame()
             
-           
+        
             # Resample to get OHLC
             ohlc_df['open']     = sim_prices_df['price'].resample(resample_interval).first()
             ohlc_df['high']     = sim_prices_df['price'].resample(resample_interval).max()
@@ -493,29 +430,67 @@ def resample_and_aggregate(new_window: int=15):
                 high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
             ).williams_r()
 
-            ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close']).rsi()
+            ohlc_df['rsi'] = ta.momentum.RSIIndicator(close=ohlc_df['close'], window=6).rsi()
             ohlc_df['ultimate_osc'] = ta.momentum.UltimateOscillator(
-                high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close']
+                high=ohlc_df['high'], low=ohlc_df['low'], close=ohlc_df['close'],
+                 window1=3, window2= 6, window3=12
             ).ultimate_oscillator()
-            ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close'], window=14).ema_indicator()
+            ohlc_df['ema'] = ta.trend.EMAIndicator(close=ohlc_df['close'], window=6).ema_indicator()
 
             # Lag features
             for lag in range(1, 6):
                 ohlc_df[f'close_lag_{lag}'] = ohlc_df['close'].shift(lag)
 
-            ohlc_df = ohlc_df.dropna()
+
+            # for the indicators all have NaN so this line would drop everything
+            #ohlc_df = ohlc_df.dropna()
+            #
+            
             try:
                 ohlc_df = ohlc_df.drop('company', axis=1)
             except:
                 pass
-            
-            logging.info(f"Schema of ohlc_df: {ohlc_df.dtypes}")
-            logging.info(f"First few rows: {ohlc_df.head()}")
-
-            yield ohlc_df
         
-            # except Exception as e:
-            #     yield pd.DataFrame()
+            
+            #fail save for debugging
+            if ohlc_df.empty:
+                return pd.DataFrame([{
+                    "timestamp": pd.Timestamp.now(),
+                    "open": 0.0,
+                    "high": 0.0,
+                    "low": 0.0,
+                    "close": 0.0,
+                    "rsi": 0.0,
+                    "williams_r": 0.0,
+                    "ultimate_osc": 0.0,
+                    "ema": 0.0,
+                    "close_lag_1": 0.0,
+                    "close_lag_2": 0.0,
+                    "close_lag_3": 0.0,
+                    "close_lag_4": 0.0,
+                    "close_lag_5": 0.0,
+                    }])
+            return ohlc_df
+    
+        except Exception as e:
+            logging.error(f"No logging due to exceptio")
+            #fail save for debugging
+            return pd.DataFrame([{
+                    "timestamp": pd.Timestamp.now(),
+                    "open": 3.0,
+                    "high": 3.0,
+                    "low": 3.0,
+                    "close": 3.0,
+                    "rsi": 3.0,
+                    "williams_r": 3.0,
+                    "ultimate_osc": 3.0,
+                    "ema": 3.0,
+                    "close_lag_1": 3.0,
+                    "close_lag_2": 3.0,
+                    "close_lag_3": 3.0,
+                    "close_lag_4": 3.0,
+                    "close_lag_5": 3.0,
+                    }])
     
     return start_resampling
 
