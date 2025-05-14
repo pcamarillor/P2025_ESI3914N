@@ -8,7 +8,6 @@ import time
 from datetime import datetime, timezone
 import random
 import string
-import os
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -17,7 +16,7 @@ import pandas as pd
 import ta  # Technical Analysis library: pip install ta
 import copy
 import threading
-import logging
+import sys
 
 class SparkUtils:
     
@@ -94,7 +93,7 @@ class Stock_Producer:
             TICKER (str):                    Stock ID
             KAFKA_TOPIC (str):               Kafka topic to publish to
             KAFKA_SERVER (str):              Kafka server address
-            CLOSE_RPICE_WINDOW (int):        Interval between two artificially generated close prices in seconds
+            CLOSE_PRICE_INTERVAL (int):        Interval between two artificially generated close prices in seconds
             FULL_PRICE_WINDOW (int):         Resample interval for all prices in minutes
             run_producer (bool):             Flag for active logging
             start_date (str):                Start date for stock download in 'YYYY-MM-DD' format
@@ -120,7 +119,7 @@ class Stock_Producer:
         self.TICKER             = ticker            #id of stock
         self.KAFKA_TOPIC        = kafka_topic       #the topic where should be published
         self.KAFKA_SERVER       = kafka_server      #server where the stream runs
-        self.CLOSE_RPICE_WINDOW = close_price_window #interval between two artificially generated close prices
+        self.CLOSE_PRICE_INTERVAL = close_price_window #interval between two artificially generated close prices
         self.FULL_PRICE_WINDOW  = full_price_window  #resmaple interval for all prices in mins
         self.run_producer       = False             #bool for active logging 
         self.start_date         = start_date        #for stock download
@@ -130,9 +129,10 @@ class Stock_Producer:
         self.last               = 0.0               #last close price from previously simulated prices
         self.k_producer         = None              #init variable for kafka producer
         self.msg_counter        = 0                 #to count the number of messages sent
-        self.msg_counter_sink_path = r"/home/jovyan/notebooks/data/final_project_ParDeForaneos" + self.TICKER + "_msg_counter.txt"     #where to save the message counter
-
-
+        self.msg_counter_sink_path = r"/home/jovyan/notebooks/data/final_project_ParDeForaneos/" + self.TICKER + "_msg_counter.txt"     #where to save the message counter
+        self.log_msg_size       = 0.0                 #size of message to be sent
+        self.starting_log_time  = datetime.now()    #init time logger for message counter
+        self.time_so_far        = 0.0               #time logger for message counter
 
 
     def __get_historical_data(self):
@@ -279,13 +279,14 @@ class Stock_Producer:
         
         #interval at which simulated prices should be resampled to calculate OHLC prices
         
-        #Create so many initial close prices that we can then publish 20 OHLC prices
-        n_prices                = int(60/self.CLOSE_RPICE_WINDOW * self.FULL_PRICE_WINDOW  * 20)   #number of prices to create
+        #Create so many initial close prices that we can then keep publishing prices for 5 mins
+        n_prices                = int(60/self.PUBL_INTERVAL * 1)                 #number of prices to create
         self.last               = self.hist["Close"].iloc[-1, 0]               #safe last price of history as next initial price
-        starting_log_time       = datetime.now()                               #time reference for msg counter
+        self.starting_log_time  = datetime.now()                               #time reference for msg counter
         log_time_logger         = datetime.now()                               #time reference for publishing time
         price_iterator = iter([])                                              #init an iterator for easy price access
         
+        print(f"Starting producer for {self.TICKER} at time: {self.starting_log_time}")
         #publish prices until stopped
         while self.run_producer:
             
@@ -294,20 +295,21 @@ class Stock_Producer:
                 current_prices = next(price_iterator)
             except:
                 #simulat new prices with random interest rate and volatility
-                next_close_price_trajectory     = self.__simulate_prices(self.CLOSE_RPICE_WINDOW, n_prices, round(random.uniform(0.005, 0.05), 3), round(random.uniform(0.4, 0.05), 3))
+                next_close_price_trajectory     = self.__simulate_prices(self.CLOSE_PRICE_INTERVAL, n_prices, round(random.uniform(0.005, 0.05), 3), round(random.uniform(0.4, 0.05), 3))
                 #create an iterator and save last price
                 price_iterator                  = iter(next_close_price_trajectory.iloc())
                 self.last                       = next_close_price_trajectory["price"].iloc[-1]   #safe last simulated price as next init price
                 current_prices                  = next(price_iterator)                            #get first price from iterator
                 with open(self.msg_counter_sink_path, 'w') as f:
-                    time_so_far = (datetime.now() - starting_log_time).total_seconds()
-                    f.write(f"time:{time_so_far} , counter:{self.msg_counter}")
+                    self.time_so_far = (datetime.now() - self.starting_log_time).total_seconds()
+                    f.write(f"time:{self.time_so_far} ,ticker: {self.TICKER}, counter:{self.msg_counter}, size per log: {self.log_msg_size/1024} kb" )
                     #print(f"\nTime so far: {time_so_far} seconds, Messages sent: {self.msg_counter} for Ticker {self.TICKER}")
             
             #create new message to publish with a new OHLC price
             #in format: date time , Stock-ID , Close
             log_data   =  "{},{},{}".format(current_prices['timestamp'], self.TICKER, 
                                     current_prices['price'])
+            self.log_msg_size = sys.getsizeof(log_data)  #size of message to be sent
                         
             #wait time if process was faster than defined log interval
             log_timediffer  = (datetime.now() - log_time_logger).total_seconds()
@@ -346,9 +348,8 @@ class Stock_Producer:
         self.run_producer = False
         self.k_producer.close()
         with open(self.msg_counter_sink_path, 'w') as f:
-            f.write(str(self.msg_counter))
-
-
+            self.time_so_far = (datetime.now() - self.starting_log_time).total_seconds()
+            f.write(f"time:{self.time_so_far} ,ticker: {self.TICKER}, counter:{self.msg_counter}, size per log: {self.log_msg_size/1024} kb" )
 
 
 
@@ -472,3 +473,16 @@ def calc_techincal_indicators(df):
 
 
 
+class ProgressListener(StreamingQueryListener):
+    def onQueryStarted(self, event):
+        print(f"Query started: {event.id}")
+
+    def onQueryProgress(self, event):
+        num_input_rows = event.progress.processedRowsPerSecond
+        print(f"Query made progress: {num_input_rows} rows processed per second")
+        
+        # if num_input_rows >= 50:
+        #     send_alert(f"High volume of data: {num_input_rows} rows")
+
+    def onQueryTerminated(self, event):
+        print(f"Query terminated: {event.id}")
