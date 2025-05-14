@@ -486,3 +486,598 @@ class ProgressListener(StreamingQueryListener):
 
     def onQueryTerminated(self, event):
         print(f"Query terminated: {event.id}")
+
+
+def load_and_prepare_data(ticker, source='parquet', lookback_period_days=30, interval="5m"):
+    """
+    Load stock data either from parquet files or historical data and prepare it for modeling.
+    
+    Args:
+        ticker (str): Stock ticker symbol
+        source (str): 'parquet' or 'historical'
+        lookback_period_days (int): Days of historical data to download if using 'historical' source
+        interval (str): Data interval for historical data (e.g., '5m', '1d')
+        
+    Returns:
+        pd.DataFrame: Prepared dataframe with technical indicators
+    """
+    if source == 'parquet':
+        # Load from parquet files
+        try:
+            df = pd.read_parquet(f"/home/jovyan/notebooks/data/final_project_ParDeForaneos/final_indicator_df_{ticker}.parquet")
+            print(f"Successfully loaded parquet data for {ticker}")
+            
+            # Ensure lowercase column names for consistency
+            df.columns = df.columns.str.lower()
+            
+            # Calculate return for signal generation
+            df['return'] = df['close'].pct_change().shift(-1)  # Next period return
+            
+            # Ensure timestamp is datetime
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df.sort_values('timestamp')
+            
+            # Drop NaN values
+            df = df.dropna()
+            
+            return df
+            
+        except Exception as e:
+            print(f"Error loading parquet data for {ticker}: {e}")
+            print("Falling back to historical data...")
+            source = 'historical'
+    
+    if source == 'historical':
+        # Download historical data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=lookback_period_days)
+        
+        try:
+            # Download data
+            df = yf.download(ticker, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'), interval=interval)
+            print(f"Successfully downloaded historical data for {ticker}")
+            
+            # Rename columns to lowercase for consistency
+            df.columns = df.columns.str.lower()
+            df = df.reset_index()
+            df = df.rename(columns={'date': 'timestamp'})
+            df['company'] = ticker
+            
+            # Calculate technical indicators
+            # Williams %R
+            df['williams_r'] = ta.momentum.WilliamsRIndicator(
+                high=df['high'], low=df['low'], close=df['close']
+            ).williams_r()
+            
+            # Ultimate Oscillator
+            df['ultimate_osc'] = ta.momentum.UltimateOscillator(
+                high=df['high'], low=df['low'], close=df['close']
+            ).ultimate_oscillator()
+            
+            # RSI
+            df['rsi'] = ta.momentum.RSIIndicator(close=df['close']).rsi()
+            
+            # EMA
+            df['ema'] = ta.trend.EMAIndicator(close=df['close']).ema_indicator()
+            
+            # Create lag features
+            for lag in range(1, 6):
+                df[f'close_lag_{lag}'] = df['close'].shift(lag)
+                
+            # Calculate return for signal generation
+            df['return'] = df['close'].pct_change().shift(-1)  # Next period return
+            
+            # Drop NaN values
+            df = df.dropna()
+            
+            return df
+            
+        except Exception as e:
+            print(f"Error downloading historical data for {ticker}: {e}")
+            return None
+    
+    return None
+
+def generate_signals(df, buy_threshold=0.015, sell_threshold=-0.015):
+    """
+    Generate BUY/SELL/WAIT signals based on future returns.
+    
+    Args:
+        df (pd.DataFrame): Dataframe with a 'return' column
+        buy_threshold (float): Minimum return threshold for BUY signal
+        sell_threshold (float): Maximum return threshold for SELL signal
+        
+    Returns:
+        pd.DataFrame: Original dataframe with a new 'Signal' column
+    """
+    df = df.copy()
+    
+    # Generate signals based on future returns
+    df['Signal'] = 'WAIT'
+    df.loc[df['return'] > buy_threshold, 'Signal'] = 'BUY'
+    df.loc[df['return'] < sell_threshold, 'Signal'] = 'SELL'
+    
+    return df
+
+class Model:
+    """
+    A Support Vector Machine model for trading signal prediction.
+    
+    Attributes:
+        svm: The SVM classifier (SVC by default).
+        ypred: Predicted target values.
+        f1: F1 score of the model.
+    """
+    
+    def __init__(self, svm=None, kernel="rbf", 
+                 gamma="scale", weight="balanced", iter=10_000):
+        """
+        Initializes the SVM model with specified parameters.
+        
+        Args:
+            svm: SVM classifier instance. Default is SVC().
+            kernel: Kernel type. Default is rbf/sigmoid.
+            gamma: Kernel coefficient. Default is 'scale'.
+            weight: Class weight handling. Default is 'balanced'.
+            iter: Maximum number of iterations. Default is 10,000.
+        """
+        if svm is None:
+            self.svm = SVC()
+        else:
+            self.svm = svm
+        self.svm.kernel = kernel
+        self.svm.gamma = gamma
+        self.svm.class_weight = weight
+        self.svm.max_iter = iter
+        self.ypred = None
+        self.f1 = None
+        
+    def fit(self, X, y):
+        """
+        Trains the SVM model on the provided data.
+        
+        Args:
+            X: Design matrix (features).
+            y: Target values.
+        """
+        self.svm.fit(X, y)
+        
+    def predict(self, X):
+        """
+        Generates predictions using the trained model.
+        
+        Args:
+            X: Input features for prediction.
+        """
+        self.ypred = self.svm.predict(X)
+        
+    def f1_score(self, test, pred, average="macro"):
+        """
+        Calculates the F1 score of the model's predictions.
+        
+        Args:
+            test: True target values.
+            pred: Predicted target values.
+            average: F1 score averaging method. Default is 'macro'.
+        """
+        self.f1 = f1_score(test, pred, average=average)
+
+
+class Backtest:
+    """
+    A backtesting engine for evaluating trading strategies.
+    
+    Attributes:
+        capital: Initial investment capital. Default is $1,000,000.
+        portfolio_value: List tracking portfolio value over time.
+        active_long_pos: Dictionary with current long position details.
+        active_short_pos: Dictionary with current short position details.
+        n_shares: Number of shares traded per position. Default is 2,000.
+        com: Commission rate per trade. Default is 0.125% (0.00125).
+        stop_loss: Stop-loss threshold. Default is 10% (0.1).
+        take_profit: Take-profit threshold. Default is 10% (0.1).
+        calmar_ratio: Calculated Calmar ratio.
+        sortino_ratio: Calculated Sortino ratio.
+        sharpe_ratio: Calculated Sharpe ratio.
+    """
+    
+    def __init__(self, capital=1_000_000, n_shares=2_000, 
+                 com=0.125 / 100, stop_loss=0.1, 
+                 take_profit=0.1):
+        self.capital = capital
+        self.portfolio_value = [capital]
+        self.active_long_pos = None
+        self.active_short_pos = None
+        self.n_shares = n_shares
+        self.com = com
+        self.stop_loss = stop_loss
+        self.take_profit = take_profit
+        self.calmar_ratio = 0
+        self.sortino_ratio = 0
+        self.sharpe_ratio = 0
+        
+    def calculate_portfolio(self, dataset, capital=1_000_000):
+        """
+        Simulates trading based on signals and tracks portfolio value.
+        
+        Args:
+            dataset: DataFrame containing price data and trading signals.
+            capital: Initial capital for simulation. Default is $1,000,000.
+        """
+        self.capital = capital
+        self.active_long_pos = None
+        self.active_short_pos = None
+        self.portfolio_value = [self.capital]
+        
+        for i, row in dataset.iterrows():
+            
+            # Close active long position
+            if self.active_long_pos:
+                if row.close < self.active_long_pos['stop_loss'] or row.close > self.active_long_pos['take_profit']:
+                    pnl = row.close * self.n_shares * (1 - self.com)
+                    self.capital += pnl
+                    self.active_long_pos = None
+            
+            # Close active short position
+            if self.active_short_pos:
+                if row.close > self.active_short_pos['stop_loss'] or row.close < self.active_short_pos['take_profit']:
+                    cost = row.close * self.n_shares * (1 + self.com)
+                    pnl = self.active_short_pos['entry'] * self.n_shares - cost
+                    self.capital += pnl
+                    self.active_short_pos = None
+                
+            # Open long position
+            if row["Signal"] == 'BUY' and self.active_short_pos is None and self.active_long_pos is None:
+                cost = row.close * self.n_shares * (1 + self.com)
+                if self.capital > cost:
+                    self.capital -= cost
+                    self.active_long_pos = {
+                        'datetime': row.name,
+                        'opened_at': row.close,
+                        'take_profit': row.close * (1 + self.take_profit),
+                        'stop_loss': row.close * (1 - self.stop_loss)
+                    }
+
+            # Open short position
+            if row["Signal"] == 'SELL' and self.active_short_pos is None and self.active_long_pos is None:
+                cost = row.close * self.n_shares * (self.com)
+                self.capital -= cost
+                self.active_short_pos = {
+                    'datetime': row.name,
+                    'entry': row.close,
+                    'take_profit': row.close * (1 - self.take_profit),
+                    'stop_loss': row.close * (1 + self.stop_loss)
+                }
+
+            # Calculate current position value
+            position_value = 0
+            if self.active_long_pos:
+                position_value = row.close * self.n_shares
+            elif self.active_short_pos:
+                position_value = self.active_short_pos['entry'] * self.n_shares - row.close * self.n_shares
+
+            # Update total portfolio value
+            self.portfolio_value.append(self.capital + position_value)
+
+    def calculate_calmar(self, bars_per_year=19_656):
+        """
+        Calculates the Calmar ratio (CAGR / Max Drawdown).
+        
+        Args:
+            bars_per_year: Number of trading periods in a year. 
+                            Default is 19,656 (for 5-minute bars).
+        """
+        initial_val = self.portfolio_value[0]
+        final_val = self.portfolio_value[-1]
+        n_bars = len(self.portfolio_value)
+        
+        # CAGR calculation
+        if initial_val <= 0 or final_val <= 0:
+            return 0.0
+        
+        cagr = (final_val / initial_val) ** (1 / (n_bars/bars_per_year)) - 1
+        
+        # Max Drawdown calculation
+        max_so_far = self.portfolio_value[0]
+        max_drawdown = 0
+        for pv in self.portfolio_value:
+            if pv > max_so_far:
+                max_so_far = pv
+            drawdown = (max_so_far - pv) / max_so_far
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+                
+        if max_drawdown == 0:
+            return cagr if cagr > 0 else 0.0
+        
+        self.calmar_ratio = cagr / max_drawdown
+        
+    def calculate_sharpe(self, bars_per_year=19_656, rfr=0.041):
+        """
+        Calculates the Sharpe ratio (excess return per unit of risk).
+        
+        Args:
+            bars_per_year: Number of trading periods in a year. Default is 19,656 (for 5-minute bars).
+            rfr: Risk-free rate. Default is 4.1% (0.041).
+        """
+        returns = pd.Series(self.portfolio_value).pct_change().dropna()
+        excess_returns = returns - (rfr / bars_per_year)
+        mean_excess_return = excess_returns.mean()
+        std_return = returns.std()
+
+        if std_return == 0:
+            self.sharpe_ratio = 0.0
+            return
+        
+        self.sharpe_ratio = (mean_excess_return / std_return) * np.sqrt(bars_per_year)
+        
+    def calculate_sortino(self, bars_per_year=19_656, rfr=0.041):
+        """
+        Calculates the Sortino ratio (excess return per unit of downside risk).
+        
+        Args:
+            bars_per_year: Number of trading periods in a year. Default is 19,656 (for 5-minute bars).
+            rfr: Risk-free rate. Default is 4.1% (0.041).
+        """
+        returns = pd.Series(self.portfolio_value).pct_change().dropna()
+        excess_returns = returns - (rfr / bars_per_year)
+        negative_returns = excess_returns[excess_returns < 0]
+        mean_excess_return = excess_returns.mean()
+        std_negative = negative_returns.std()
+
+        if std_negative == 0:
+            self.sortino_ratio = 0.0
+            return    
+        
+        self.sortino_ratio = (mean_excess_return / std_negative) * np.sqrt(bars_per_year)
+
+class StockModel:
+    def __init__(self, ticker, data_source='parquet', lookback_period_days=730):
+        self.ticker = ticker
+        self.data = load_and_prepare_data(ticker, source=data_source, lookback_period_days=lookback_period_days)
+        self.X_train = None
+        self.X_test = None
+        self.y_train = None
+        self.y_test = None
+        self.model = Model()
+        self.scaler = StandardScaler()
+        self.backtest = Backtest()
+        self.indicators = {
+            'rsi': {'window': 14},
+            'ultimate': {'window1': 7, 'window2': 14, 'window3': 28},
+            'williams': {'lbp': 14}
+        }
+        
+    def prepare_data(self, buy_threshold=0.015, sell_threshold=-0.015, test_size=0.3):
+        if self.data is None:
+            print(f"No data available for {self.ticker}")
+            return False
+        
+        # Generate signals
+        self.data = generate_signals(self.data, buy_threshold, sell_threshold)
+        
+        # Define features
+        feature_columns = [
+            'open', 'high', 'low', 'close', 'return', 'rsi', 'ultimate_osc', 'williams_r', 'ema',
+            'close_lag_1', 'close_lag_2', 'close_lag_3', 'close_lag_4', 'close_lag_5'
+        ]
+        
+        # Split data chronologically
+        train_size = int(len(self.data) * (1 - test_size))
+        train_data = self.data.iloc[:train_size]
+        test_data = self.data.iloc[train_size:]
+        
+        # Prepare X and y for train and test sets
+        self.X_train = train_data[feature_columns]
+        self.y_train = train_data['Signal']
+        self.X_test = test_data[feature_columns]
+        self.y_test = test_data['Signal']
+        
+        # Scale features
+        self.X_train = pd.DataFrame(
+            self.scaler.fit_transform(self.X_train),
+            columns=self.X_train.columns,
+            index=self.X_train.index
+        )
+        
+        self.X_test = pd.DataFrame(
+            self.scaler.transform(self.X_test),
+            columns=self.X_test.columns,
+            index=self.X_test.index
+        )
+        
+        self.test_data = test_data.copy()
+        
+        return True
+
+    def optimize_indicators(self, n_trials=20):
+        """
+        Optimize technical indicator parameters using Optuna.
+        """
+        def objective(trial):
+            # Define hyperparameters to optimize
+            rsi_window = trial.suggest_int("rsi_window", 5, 20)
+            ultimate_window1 = trial.suggest_int("ultimate_window1", 1, 10)
+            ultimate_window2 = trial.suggest_int("ultimate_window2", 10, 20)
+            ultimate_window3 = trial.suggest_int("ultimate_window3", 20, 30)
+            williams_lbp = trial.suggest_int("williams_lbp", 10, 20)
+            svm_c = trial.suggest_float("C", 0.01, 100, log=True)
+            
+            # Apply parameters to indicators
+            temp_data = self.data.copy()
+            
+            # Recalculate indicators with new parameters
+            temp_data['rsi'] = ta.momentum.RSIIndicator(
+                close=temp_data['close'], window=rsi_window
+            ).rsi()
+            
+            temp_data['ultimate_osc'] = ta.momentum.UltimateOscillator(
+                high=temp_data['high'], low=temp_data['low'], close=temp_data['close'],
+                window1=ultimate_window1, window2=ultimate_window2, window3=ultimate_window3
+            ).ultimate_oscillator()
+            
+            temp_data['williams_r'] = ta.momentum.WilliamsRIndicator(
+                high=temp_data['high'], low=temp_data['low'], close=temp_data['close'],
+                lbp=williams_lbp
+            ).williams_r()
+            
+            # Regenerate signals
+            temp_data = generate_signals(temp_data)
+            
+            # Drop NaN values
+            temp_data = temp_data.dropna()
+            
+            # Split data again (since we might have different NaN values after recalculation)
+            train_size = int(len(temp_data) * 0.7)
+            train_data = temp_data.iloc[:train_size]
+            test_data = temp_data.iloc[train_size:]
+            
+            # Get features and target
+            feature_columns = [
+                'open', 'high', 'low', 'close', 'return', 'rsi', 'ultimate_osc', 'williams_r', 'ema',
+                'close_lag_1', 'close_lag_2', 'close_lag_3', 'close_lag_4', 'close_lag_5'
+            ]
+            
+            X_train = train_data[feature_columns]
+            y_train = train_data['Signal']
+            X_test = test_data[feature_columns]
+            y_test = test_data['Signal']
+            
+            # Scale data
+            scaler = StandardScaler()
+            X_train = pd.DataFrame(
+                scaler.fit_transform(X_train),
+                columns=X_train.columns,
+                index=X_train.index
+            )
+            
+            X_test = pd.DataFrame(
+                scaler.transform(X_test),
+                columns=X_test.columns,
+                index=X_test.index
+            )
+            
+            # Train and evaluate model
+            model = Model()
+            model.svm.C = svm_c
+            model.fit(X_train, y_train)
+            model.predict(X_test)
+            model.f1_score(y_test, model.ypred)
+            
+            return model.f1
+        
+        # Create and run Optuna study
+        study = optuna.create_study(direction="maximize")
+        study.optimize(objective, n_trials=n_trials)
+        
+        # Save best parameters
+        best_params = study.best_params
+        self.indicators['rsi']['window'] = best_params['rsi_window']
+        self.indicators['ultimate']['window1'] = best_params['ultimate_window1']
+        self.indicators['ultimate']['window2'] = best_params['ultimate_window2']
+        self.indicators['ultimate']['window3'] = best_params['ultimate_window3']
+        self.indicators['williams']['lbp'] = best_params['williams_lbp']
+        self.model.svm.C = best_params['C']
+        
+        print(f"Best parameters: {best_params}")
+        print(f"Best F1 score: {study.best_value}")
+        
+        # Recalculate indicators with optimized parameters
+        self.data['rsi'] = ta.momentum.RSIIndicator(
+            close=self.data['close'], window=self.indicators['rsi']['window']
+        ).rsi()
+        
+        self.data['ultimate_osc'] = ta.momentum.UltimateOscillator(
+            high=self.data['high'], low=self.data['low'], close=self.data['close'],
+            window1=self.indicators['ultimate']['window1'],
+            window2=self.indicators['ultimate']['window2'],
+            window3=self.indicators['ultimate']['window3']
+        ).ultimate_oscillator()
+        
+        self.data['williams_r'] = ta.momentum.WilliamsRIndicator(
+            high=self.data['high'], low=self.data['low'], close=self.data['close'],
+            lbp=self.indicators['williams']['lbp']
+        ).williams_r()
+        
+        # Regenerate signals and prepare data again
+        self.data = generate_signals(self.data)
+        self.data = self.data.dropna()
+        self.prepare_data()
+        
+        return best_params
+
+    def train_model(self):
+        """Train the SVM model with the prepared data"""
+        self.model.fit(self.X_train, self.y_train)
+        self.model.predict(self.X_test)
+        self.model.f1_score(self.y_test, self.model.ypred)
+        
+        # Replace test signals with predictions for backtesting
+        self.test_data['Signal'] = self.model.ypred
+        
+        print(f"F1 Score for {self.ticker}: {self.model.f1}")
+        
+        return self.model.f1
+
+    def optimize_backtest(self, n_trials=20):
+        """Optimize backtest parameters using Optuna"""
+        def objective(trial):
+            # Define hyperparameters to optimize
+            stop_loss = trial.suggest_float("stop_loss", 0.01, 0.2)
+            take_profit = trial.suggest_float("take_profit", 0.01, 0.3)
+            n_shares = trial.suggest_int("n_shares", 100, 5000, step=100)
+            
+            # Apply parameters to backtest
+            backtest = Backtest(stop_loss=stop_loss, take_profit=take_profit, n_shares=n_shares)
+            backtest.calculate_portfolio(self.test_data)
+            backtest.calculate_calmar()
+            
+            return backtest.calmar_ratio
+        
+        # Create and run Optuna study
+        study = optuna.create_study(direction="maximize")
+        study.optimize(objective, n_trials=n_trials)
+        
+        # Save best parameters
+        best_params = study.best_params
+        self.backtest.stop_loss = best_params['stop_loss']
+        self.backtest.take_profit = best_params['take_profit']
+        self.backtest.n_shares = best_params['n_shares']
+        
+        print(f"Best backtest parameters: {best_params}")
+        print(f"Best Calmar ratio: {study.best_value}")
+        
+        # Apply best parameters to backtest
+        self.backtest.calculate_portfolio(self.test_data)
+        self.backtest.calculate_calmar()
+        self.backtest.calculate_sharpe()
+        self.backtest.calculate_sortino()
+        
+        return best_params
+
+    def run_backtest(self):
+        """Run backtest with current parameters"""
+        self.backtest.calculate_portfolio(self.test_data)
+        self.backtest.calculate_calmar()
+        self.backtest.calculate_sharpe()
+        self.backtest.calculate_sortino()
+        
+        print(f"\nBacktest results for {self.ticker}:")
+        print(f"Calmar ratio: {self.backtest.calmar_ratio:.4f}")
+        print(f"Sharpe ratio: {self.backtest.sharpe_ratio:.4f}")
+        print(f"Sortino ratio: {self.backtest.sortino_ratio:.4f}")
+        print(f"Initial portfolio value: ${self.backtest.portfolio_value[0]:,.2f}")
+        print(f"Final portfolio value: ${self.backtest.portfolio_value[-1]:,.2f}")
+        print(f"Return: {((self.backtest.portfolio_value[-1]/self.backtest.portfolio_value[0])-1)*100:.2f}%")
+        
+        return {
+            'ticker': self.ticker,
+            'calmar': self.backtest.calmar_ratio,
+            'sharpe': self.backtest.sharpe_ratio,
+            'sortino': self.backtest.sortino_ratio,
+            'initial_value': self.backtest.portfolio_value[0],
+            'final_value': self.backtest.portfolio_value[-1],
+            'return': ((self.backtest.portfolio_value[-1]/self.backtest.portfolio_value[0])-1)*100,
+            'portfolio_value': self.backtest.portfolio_value,
+            'close_prices': self.test_data['close'].values
+        }
