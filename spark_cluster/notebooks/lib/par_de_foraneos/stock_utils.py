@@ -465,7 +465,9 @@ def calc_techincal_indicators(df):
         print("Dropping NaN values...")
         ohlc_df = ohlc_df.dropna()
         ohlc_df.reset_index(inplace=True)
-        
+        if ohlc_df.empty:
+            print("ohlc_df is empty")
+            exit()
         return ohlc_df
         #
         
@@ -491,7 +493,11 @@ class ProgressListener(StreamingQueryListener):
     def onQueryTerminated(self, event):
         print(f"Query terminated: {event.id}")
 
-def load_and_prepare_data(ticker, source='parquet', lookback_period_days=59, interval="5m"):
+
+
+
+
+def load_and_prepare_data(ticker, source='parquet', lookback_period_days=30, interval="5m"):
     """
     Load stock data either from parquet files or historical data and prepare it for modeling.
     
