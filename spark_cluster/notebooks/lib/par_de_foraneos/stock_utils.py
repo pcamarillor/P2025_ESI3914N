@@ -17,6 +17,10 @@ import ta  # Technical Analysis library: pip install ta
 import copy
 import threading
 import sys
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.metrics import f1_score
+import optuna
 
 class SparkUtils:
     
@@ -487,8 +491,7 @@ class ProgressListener(StreamingQueryListener):
     def onQueryTerminated(self, event):
         print(f"Query terminated: {event.id}")
 
-
-def load_and_prepare_data(ticker, source='parquet', lookback_period_days=30, interval="5m"):
+def load_and_prepare_data(ticker, source='parquet', lookback_period_days=59, interval="5m"):
     """
     Load stock data either from parquet files or historical data and prepare it for modeling.
     
@@ -508,7 +511,7 @@ def load_and_prepare_data(ticker, source='parquet', lookback_period_days=30, int
             print(f"Successfully loaded parquet data for {ticker}")
             
             # Ensure lowercase column names for consistency
-            df.columns = df.columns.str.lower()
+            df.columns = [str(col).lower() for col in df.columns]
             
             # Calculate return for signal generation
             df['return'] = df['close'].pct_change().shift(-1)  # Next period return
@@ -528,21 +531,44 @@ def load_and_prepare_data(ticker, source='parquet', lookback_period_days=30, int
             source = 'historical'
     
     if source == 'historical':
-        # Download historical data
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=lookback_period_days)
-        
         try:
+            # For 5-minute data, we need to be careful about the date range
+            # Yahoo Finance limits how far back we can go for intraday data
+            end_date = datetime.now()
+            
+            # Yahoo only provides about 60 days of 5-minute data
+            if interval == "5m" and lookback_period_days > 59:
+                print(f"Warning: Yahoo only provides ~60 days of 5-minute data. Limiting to 59 days.")
+                lookback_period_days = 59
+                
+            start_date = end_date - timedelta(days=lookback_period_days)
+            
+            print(f"Downloading {ticker} data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+            
             # Download data
-            df = yf.download(ticker, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'), interval=interval)
-            print(f"Successfully downloaded historical data for {ticker}")
+            data = yf.download(ticker, start=start_date.strftime('%Y-%m-%d'), 
+                              end=end_date.strftime('%Y-%m-%d'), 
+                              interval=interval,
+                              progress=False)
             
-            # Rename columns to lowercase for consistency
-            df.columns = df.columns.str.lower()
-            df = df.reset_index()
-            df = df.rename(columns={'date': 'timestamp'})
+            print(f"Downloaded data shape: {data.shape}")
+            
+            if data.empty:
+                print(f"No data returned for {ticker}")
+                return None
+                
+            # Create a clean DataFrame with proper column names
+            df = pd.DataFrame()
+            
+            # Copy each relevant column with appropriate naming
+            df['timestamp'] = data.index
+            df['open'] = data.loc[:, 'Open'].values
+            df['high'] = data.loc[:, 'High'].values
+            df['low'] = data.loc[:, 'Low'].values
+            df['close'] = data.loc[:, 'Close'].values
+            df['volume'] = data.loc[:, 'Volume'].values
             df['company'] = ticker
-            
+
             # Calculate technical indicators
             # Williams %R
             df['williams_r'] = ta.momentum.WilliamsRIndicator(
@@ -570,10 +596,13 @@ def load_and_prepare_data(ticker, source='parquet', lookback_period_days=30, int
             # Drop NaN values
             df = df.dropna()
             
+            print(f"Final prepared data shape: {df.shape}")
             return df
             
         except Exception as e:
             print(f"Error downloading historical data for {ticker}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     return None
