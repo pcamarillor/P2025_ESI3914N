@@ -283,8 +283,8 @@ class Stock_Producer:
         
         #interval at which simulated prices should be resampled to calculate OHLC prices
         
-        #Create so many initial close prices that we can then keep publishing prices for 5 mins
-        n_prices                = int(60/self.PUBL_INTERVAL * 1)                 #number of prices to create
+        #Create so many initial close prices that we can then keep publishing prices for 40 mins
+        n_prices                = int(60/self.PUBL_INTERVAL * 40)                 #number of prices to create
         self.last               = self.hist["Close"].iloc[-1, 0]               #safe last price of history as next initial price
         self.starting_log_time  = datetime.now()                               #time reference for msg counter
         log_time_logger         = datetime.now()                               #time reference for publishing time
@@ -467,8 +467,9 @@ def calc_techincal_indicators(df):
         ohlc_df.reset_index(inplace=True)
         if ohlc_df.empty:
             print("ohlc_df is empty")
-            exit()
-        return ohlc_df
+            return None
+        else:
+            return ohlc_df
         #
         
     except:        
